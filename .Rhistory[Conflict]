@@ -1,0 +1,512 @@
+w <- rbinom( 1e4 , size=15 , prob=samples )
+dens(w)
+simplehist(w)
+#3M3. Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p. What is the probability of observing
+# 8 water in 15 tosses?
+w <- rbinom( 1e4 , size=15 , prob=posterior )
+simplehist(posterior)
+#3M3. Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p. What is the probability of observing
+# 8 water in 15 tosses?
+w <- rbinom( 1e4 , size=15 , prob=samples )
+simplehist(posterior)
+simplehist(w)
+#3M3. Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p. What is the probability of observing
+# 8 water in 15 tosses?
+w <- rbinom( 1e4 , size=15 , prob=posterior )
+simplehist(w)
+#3M3. Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p. What is the probability of observing
+# 8 water in 15 tosses?
+w <- rbinom( 1e4 , size=15 , prob=samples )
+simplehist(w)
+plot(w)
+plot(w)
+simplehist(w)
+dbinom(1e4, size = 2)
+?dbinom
+chainmode( samples , adj=0.01 )
+simplehist(w)
+mean(samples)
+simplehist(w, xlab = "Probability of water")
+simplehist(w, xlab = "Number of water samples")
+plot(likelihood)
+plot(posterior)
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(w),decreasing=TRUE)[1:6]
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(w),decreasing=TRUE)[1:6]/1e4
+# What is the probability of observing 8 water in 15 tosses?
+sort((table(w),decreasing=TRUE)[1:6])/1e4
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(w),decreasing=TRUE)/1e4
+# 3M4. Using the posterior distribution constructed from the new (8/15) data, now calculate the probability
+# of observing 6 water in 9 tosses.
+likelihood_n <- dbinom( 6 , size=9 , prob=p_grid )
+plot(likelihood_n)
+posterior_n <- likelihood_n * posterior
+plot(posterior_n)
+posterior_n <- posterior_n / sum(posterior_n)
+plot(posterior_n)
+plot(posterior_n)
+sort(table(posterior_n),decreasing=TRUE)/1e4
+sort(table(posterior_n),decreasing=TRUE)[1:6]
+sort(table(posterior_n),decreasing=TRUE)[1]
+sort(table(posterior_n),decreasing=TRUE)[2]
+mean(w == 8)
+# 3M4. Using the posterior distribution constructed from the new (8/15) data, now calculate the probability
+# of observing 6 water in 9 tosses.
+w_n <- rbinom(1e4, size = 9, prob = samples)
+sort(table(w_n),decreasing=TRUE)/1e4
+mean(w_n ==6)
+rm(list = ls())
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+?ifelse
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+prior <- rep( 1 , 1000 )
+plot(prior)
+prior <-ifelse( p_grid < 0.5 , 0 , 1 )
+plot(prior)
+prior <- rep( 1 , 1000 )
+prior <- if( p_grid < 0.5 , 0)
+prior <- rep( 1 , 1000 )
+prior <- ifelse(test = p_grid < .5, yes = 0, no = 1)
+plot(prior)
+plot(prior)
+prior <- rep( 1 , 1000 )
+prior <- ifelse(test = p_grid < .5, 0)
+prior <- rep( 1 , 1000 )
+prior <- ifelse(test = p_grid < .5, 0, 10)
+plot(prior)
+prior <- ifelse(test = p_grid < .5, 0, 2)
+plot(prior)
+possible_p <- seq( from=0 , to=1 , length.out=1000 )
+InfPrior <- rep( 1 , 1000 )
+InfPrior <- ifelse(possible_p < .5, 0, 2)
+likelihood_new <- dbinom( 8 , size=15 , prob=possible_p )
+posterior_new <- likelihood_new * InfPrior
+posterior_new <- posterior_new / sum(posterior_new)
+rm(list = ls())
+possible_p <- seq( from=0 , to=1 , length.out=1000 )
+InfPrior <- rep( 1 , 1000 )
+InfPrior <- ifelse(possible_p < .5, 0, 2)
+likelihood_new <- dbinom( 8 , size=15 , prob=possible_p )
+posterior_new <- likelihood_new * InfPrior
+posterior_new <- posterior_new / sum(posterior_new)
+InfPrior
+#Draw 10,000 samples from the grid approximation from above.
+# Use the samples to calculate the 90% HPDI for p.
+samples_new <- sample( possible_p , prob=posterior_new , size=1e4 , replace=TRUE )
+HPDI(samples_new, 0.9)
+# Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p.
+w <- rbinom( 1e4 , size=15 , prob=samples_new )
+# Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p.
+post_pred_distr <- rbinom( 1e4 , size=15 , prob=samples_new )
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(post_pred_distr),decreasing=TRUE)/1e4 # / mean(w==8)
+mean(post_pred_distr == 8)
+plot(post_pred_distr)
+simplehist(post_pred_distr)
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+prior <- rep( 1 , 1000 )
+likelihood <- dbinom( 8 , size=15 , prob=p_grid )
+posterior <- likelihood * prior
+posterior <- posterior / sum(posterior)
+set.seed(100)
+#3M2. Draw 10,000 samples from the grid approximation from above.
+# Use the samples to calculate the 90% HPDI for p.
+samples <- sample( p_grid , prob=posterior , size=1e4 , replace=TRUE )
+HPDI(samples, 0.9)
+#A = 0.3243243 -> 0.7157157
+#3M3. Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p.
+w <- rbinom( 1e4 , size=15 , prob=samples )
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(w),decreasing=TRUE)/1e4 # / mean(w==8)
+#A = 0.1484
+# 3M4. Using the posterior distribution constructed from the new (8/15) data, now calculate the probability
+# of observing 6 water in 9 tosses.
+w_n <- rbinom(1e4, size = 9, prob = samples)
+sort(table(w_n),decreasing=TRUE)/1e4
+simplehist(w)
+post_pred_distr2 <- rbinom(1e4, size = 9, prob = samples_new)
+sort(table(post_pred_distr2),decreasing=TRUE)/1e4
+6/9
+lh = dbinom (8, 15, 0.7)
+plot(lh)
+lh = dbinom (8, size = 15, prob = 0.7)
+quantile(samples_new, c(0.8, 1))
+dens(samples_new)
+dens(samples)
+dens(samples_new)
+plot(posterior)
+plot(posterior_new)
+InfPrior <- rep( 1 , 1000 )
+InfPrior <- ifelse(possible_p < .5, 0, 0,7)
+InfPrior <- ifelse(possible_p < .5, 0, 0.7)
+plot(InfPrior)
+possible_p <- seq( from=0 , to=1 , length.out=1000 )
+InfPrior <- rep( 1 , 1000 )
+InfPrior <- ifelse(possible_p < .5, 0, 0.7)
+likelihood_new <- dbinom( 8 , size=15 , prob=possible_p )
+posterior_new <- likelihood_new * InfPrior
+posterior_new <- posterior_new / sum(posterior_new)
+samples_new <- sample( possible_p , prob=posterior_new , size=1e4 , replace=TRUE )
+HPDI(samples_new, 0.9)
+# Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p.
+post_pred_distr <- rbinom( 1e4 , size=15 , prob=samples_new )
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(post_pred_distr),decreasing=TRUE)/1e4 # / mean(w==8)
+possible_p <- seq( from=0 , to=1 , length.out=1000 )
+InfPrior <- rep( 1 , 1000 )
+InfPrior <- ifelse(possible_p < .5, 0, 10)
+likelihood_new <- dbinom( 8 , size=15 , prob=possible_p )
+posterior_new <- likelihood_new * InfPrior
+posterior_new <- posterior_new / sum(posterior_new)
+samples_new <- sample( possible_p , prob=posterior_new , size=1e4 , replace=TRUE )
+HPDI(samples_new, 0.9)
+# Construct a posterior predictive check for this model and data. This means simulate the distribution
+# of samples, averaging over the posterior uncertainty in p.
+post_pred_distr <- rbinom( 1e4 , size=15 , prob=samples_new )
+# What is the probability of observing 8 water in 15 tosses?
+sort(table(post_pred_distr),decreasing=TRUE)/1e4 # / mean(w==8)
+post_pred_distr2 <- rbinom(1e4, size = 9, prob = samples_new)
+sort(table(post_pred_distr2),decreasing=TRUE)/1e4
+rm(list = ls())
+birth1 <- c(1,0,0,0,1,1,0,1,0,1,0,0,1,1,0,1,1,0,0,0,1,0,0,0,1,0,
+0,0,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,0,1,0,0,1,1,0,1,0,0,0,0,0,0,0,
+1,1,0,1,0,0,1,0,0,0,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,1,0,1,1,0,
+1,0,1,1,1,0,1,1,1,1)
+birth2 <- c(0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,0,0,1,1,1,0,0,1,1,1,0,
+1,1,1,0,1,1,1,0,1,0,0,1,1,1,1,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,
+1,1,1,0,1,1,0,1,1,0,1,1,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,1,0,0,1,1,
+0,0,0,1,1,1,0,0,0,0)
+births <- data.frame(birth1,births2)
+births <- data.frame(birth1,birth2)
+View(births)
+data(homeworkch3)
+rm(birth1, birth2)
+data(homeworkch3)
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+priorUniform <- rep(1,1000)
+dbinom(1:10, size = 1, prob = 0.5)
+dbinom(1:10, size = 10, prob = 0.5)
+?dbinom
+lhBoy <- dbinom(1, size = 2, pron = p_grid)
+lhBoy <- dbinom(1, size = 2, prob = p_grid)
+plot(lhboy)
+plot(lhBoy)
+sum(births$birth1)
+sum(births$birth2)
+length(births)
+mean(sum(births$birth1)+sum(births$birth2))
+sum(births$birth1)+sum(births$birth2)
+mean(sum(births$birth1)+sum(births$birth2))
+(sum(births$birth1)+sum(births$birth2))/2
+lhBoy <- dbinom((sum(births$birth1)+sum(births$birth2))/2, size = length(births$birth1), prob = p_grid)
+warnings()
+lhBoy <- dbinom(round((sum(births$birth1)+sum(births$birth2))/2), size = length(births$birth1), prob = p_grid)
+lhBoy
+plot(lhBoy)
+mean(lhBoy)
+sort(table(lhBoy),decreasing=TRUE)/1e4
+sort(table(lhBoy),decreasing=TRUE)/1e4[1]
+sort(table(lhBoy),decreasing=TRUE)/1e4[1:2]
+round((sum(births$birth1)+sum(births$birth2))/2)
+sum(births$birth1)+sum(births$birth2))/2
+sum(births$birth1)+sum(births$birth2)/2
+(sum(births$birth1)+sum(births$birth2))/2
+posteriorBoy <- lhBoy * priorUniform
+posteriorBoy <- posteriorBoy/sum(posteriorBoy)
+plot(posteriorBoy)
+p_grid[ which.max(posteriorBoy) ]
+rm(list = ls())
+birth1 <- c(1,0,0,0,1,1,0,1,0,1,0,0,1,1,0,1,1,0,0,0,1,0,0,0,1,0,
+0,0,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,0,1,0,0,1,1,0,1,0,0,0,0,0,0,0,
+1,1,0,1,0,0,1,0,0,0,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,1,0,1,1,0,
+1,0,1,1,1,0,1,1,1,1)
+birth2 <- c(0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,0,0,1,1,1,0,0,1,1,1,0,
+1,1,1,0,1,1,1,0,1,0,0,1,1,1,1,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,
+1,1,1,0,1,1,0,1,1,0,1,1,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,1,0,0,1,1,
+0,0,0,1,1,1,0,0,0,0)
+births <- data.frame(birth1,birth2)
+#3H1. Using grid approximation, compute the posterior distribution for the probability of a birth
+# being a boy. Assume a uniform prior probability. Which parameter value maximizes the posterior
+# probability?
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+priorUniform <- rep(1,1000)
+lhBoy <- dbinom(round((sum(births$birth1)+sum(births$birth2))/2), size = length(births$birth1), prob = p_grid)
+posteriorBoy <- lhBoy * priorUniform
+posteriorBoy <- posteriorBoy/sum(posteriorBoy)
+A_3H1 <- p_grid[ which.max(posteriorBoy) ]
+total.births <- length(birth1) + length(birth2)
+boys.born <- sum(birth1 + birth2)
+girls.born <- total.births - boys.born
+p_grid <- seq(from = 0, to = 1, length.out = 1000)
+prior <- rep(x = 1, length(p_grid))
+likelihood <- dbinom(x = boys.born, size = total.births, prob = p_grid)
+unstandardized.posterior <- likelihood * prior
+posterior <- unstandardized.posterior / sum(unstandardized.posterior)
+plot(posterior ~ p_grid, type = "l")
+p_grid[ which.max(posterior) ]
+birthsTotal <- sum(births$birth1)+sum(births$birth2)
+sum(births)
+birthsTotal <- length(births$birth1)+length(births$birth2)
+?type
+typeof(birthsTotal)
+lhBoy2 <- dbinom(boysTotal, birthsTotal, prob = p_grid)
+birthsTotal <- length(births$birth1)+length(births$birth2)
+boysTotal <- sum(births)
+lhBoy2 <- dbinom(boysTotal, birthsTotal, prob = p_grid)
+posteriorBoy2 <- lhBoy2 * priorUniform
+posteriorBoy2 <- posteriorBoy2/sum(posteriorBoy2)
+A_3H1_v2 <- p_grid[ which.max(posteriorBoy2) ]
+plot(posteriorBoy ~ p_grid, type = "l")
+plot(posteriorBoy2 ~ p_grid, type = "l")
+plot(posteriorBoy ~ p_grid, type = "l")
+plot(posteriorBoy2 ~ p_grid, type = "l")
+rm(list = ls())
+birth1 <- c(1,0,0,0,1,1,0,1,0,1,0,0,1,1,0,1,1,0,0,0,1,0,0,0,1,0,
+0,0,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,0,1,0,0,1,1,0,1,0,0,0,0,0,0,0,
+1,1,0,1,0,0,1,0,0,0,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,1,0,1,1,0,
+1,0,1,1,1,0,1,1,1,1)
+birth2 <- c(0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,0,0,1,1,1,0,0,1,1,1,0,
+1,1,1,0,1,1,1,0,1,0,0,1,1,1,1,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,
+1,1,1,0,1,1,0,1,1,0,1,1,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,1,0,0,1,1,
+0,0,0,1,1,1,0,0,0,0)
+births <- data.frame(birth1,birth2)
+#3H1. Using grid approximation, compute the posterior distribution for the probability of a birth
+# being a boy. Assume a uniform prior probability. Which parameter value maximizes the posterior
+# probability?
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+priorUniform <- rep(1,1000)
+lhBoy <- dbinom(round((sum(births$birth1)+sum(births$birth2))/2), size = length(births$birth1), prob = p_grid)
+unstd.posteriorBoy <- lhBoy * priorUniform
+posteriorBoy <- unstd.posteriorBoy/sum(posteriorBoy)
+A_3H1 <- p_grid[ which.max(posteriorBoy) ]
+#v2 - CORRECT
+birthsTotal <- length(births$birth1)+length(births$birth2)
+boysTotal <- sum(births)
+lhBoy2 <- dbinom(boysTotal, birthsTotal, prob = p_grid)
+unstd.posteriorBoy2 <- lhBoy2 * priorUniform
+posteriorBoy2 <- unstd.posteriorBoy2/sum(posteriorBoy2)
+A_3H1_v2 <- p_grid[ which.max(posteriorBoy2) ]
+?sample
+samples <- sample(posteriorBoy2, 1e4)
+posteriorBoy2
+posteriorBoy
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+priorUniform <- rep(1,1000)
+lhBoy <- dbinom(round((sum(births$birth1)+sum(births$birth2))/2), size = length(births$birth1), prob = p_grid)
+unstd.posteriorBoy <- lhBoy * priorUniform
+posteriorBoy <- unstd.posteriorBoy/sum(posteriorBoy)
+A_3H1 <- p_grid[ which.max(posteriorBoy) ]
+#v2 - CORRECT
+birthsTotal <- length(births$birth1)+length(births$birth2)
+boysTotal <- sum(births)
+lhBoy2 <- dbinom(boysTotal, birthsTotal, prob = p_grid)
+unstd.posteriorBoy2 <- lhBoy2 * priorUniform
+posteriorBoy2 <- unstd.posteriorBoy2/sum(posteriorBoy2)
+A_3H1_v2 <- p_grid[ which.max(posteriorBoy2) ]
+posteriorBoy2 <- unstd.posteriorBoy2/sum(posteriorBoy2)
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+priorUniform <- rep(1,1000)
+lhBoy <- dbinom(round((sum(births$birth1)+sum(births$birth2))/2), size = length(births$birth1), prob = p_grid)
+unstd.posteriorBoy <- lhBoy * priorUniform
+posteriorBoy <- unstd.posteriorBoy/sum(unstd.posteriorBoy)
+A_3H1 <- p_grid[ which.max(posteriorBoy) ]
+#v2 - CORRECT
+birthsTotal <- length(births$birth1)+length(births$birth2)
+boysTotal <- sum(births)
+lhBoy2 <- dbinom(boysTotal, birthsTotal, prob = p_grid)
+unstd.posteriorBoy2 <- lhBoy2 * priorUniform
+posteriorBoy2 <- unstd.posteriorBoy2/sum(unstd.posteriorBoy2)
+A_3H1_v2 <- p_grid[ which.max(posteriorBoy2) ]
+plot(posteriorBoy ~ p_grid, type = "l")
+plot(posteriorBoy2 ~ p_grid, type = "l")
+samples <- sample(posteriorBoy2, 1e4)
+samples <- sample( p_grid , prob=posterior , size=1e4 , replace=TRUE )
+samples <- sample( p_grid , prob=posteriorBoy2 , size=1e4 , replace=TRUE )
+lenght(samples)
+length(samples)
+length(p_grid)
+# 50% HPDI
+HPDI(samples, 0.5)
+# 89% HPDI
+HPDI(samples, 0.89)
+# 97% HPDI
+HPDI(samples, 0.97)
+dens(samples)
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=posteriorBoy2 )
+post_pred_distr
+dens(post_pred_distr)
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=posteriorBoy2 )
+dens(post_pred_distr)
+sum(post_pred_distr)
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sum(post_pred_distr)
+lenght(post_pred_distr)
+length(post_pred_distr)
+sum(post_pred_distr)/length(post_pred_distr)
+dens(post_pred_distr)
+sort(table(post_pred_distr),decreasing=TRUE)/1e4[1:5]
+sort(table(post_pred_distr),decreasing=TRUE)/1e4
+length(unique(post_pred_distr))
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1:2]
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+mean(post_pred_distr == 111)
+which.max(post_pred_distr)
+post_pred_distr
+max(post_pred_distr)
+table(post_pred_distr)
+dens(samples)
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+dens(post_pred_distr)
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+dens(post_pred_distr)
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+post_pred_distr <- rbinom( 1e4 , size=200 , prob=samples )
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)[1]
+sort(table(post_pred_distr),decreasing=TRUE)/length(post_pred_distr)
+dens(post_pred_distr, adj = .1)
+abline(v = boysTotal, col = "red")
+firstBoy <- sum(births$birth1)
+ppd_firstBoy <- rbinom( 1e4 , size=100 , prob=samples )
+ppd_firstBoy
+sort(table(ppd_firstBoy),decreasing=TRUE)/length(ppd_firstBoy)
+dens(ppd_firstBoy, adj = .1)
+abline(v = firstBoy, col = "red")
+firstBoy <- sum(births$birth1)
+ppd_firstBoy <- rbinom( 1e4 , size=100 , prob=samples )
+sort(table(ppd_firstBoy),decreasing=TRUE)/length(ppd_firstBoy)
+dens(ppd_firstBoy, adj = .1)
+abline(v = firstBoy, col = "red")
+firstBoy <- sum(births$birth1)
+firstBoy
+firstBoy <- sum(births$birth1)
+firstBoy
+ppd_firstBoy <- rbinom( 1e4 , size=100 , prob=samples )
+sort(table(ppd_firstBoy),decreasing=TRUE)/length(ppd_firstBoy)
+dens(ppd_firstBoy, adj = .1)
+abline(v = firstBoy, col = "red")
+samples
+firstFem <- births$birth2[births$birth1==0]
+firstFem <- births$birth2==1[births$birth1==0]
+firstFem <- births$birth2[births$birth1==0]
+firstFem
+sum(births$birth1)
+secondBoy_firstFem <- secondBirths_firstFem==1
+secondBirths_firstFem <- births$birth2[births$birth1==0]
+secondBoy_firstFem <- secondBirths_firstFem==1
+sum(firstFem)
+secondBirth_firstFem <- births$birth2[births$birth1==0]
+secondBoy_firstFem <- sum(secondBirth_firstFem)
+ppd_secondBoy <- rbinom(1e4, size = 49, prob = samples)
+ppd_secondBoy
+sort(table(ppd_secondBoy),decreasing=TRUE)/length(ppd_secondBoy)
+dens(ppd_secondBoy, adj = .1)
+abline(v = secondBoy_firstFem, col = "red")
+sum(births$birth2)
+secondBoy_firstFem <- sum(secondBirth_firstFem)
+secondBirth_firstFem
+secondBoy_firstFem
+sum(births$birth1)
+sum(births$birth2)
+secondBoy_firstFem <- sum(births$birth2[births$birth1==0])
+secondBoy_firstFem
+secondBirth_firstFem <- births$birth2[births$birth1==0]
+secondBoy_firstFem <- sum(secondBirth_firstFem)
+secondBoy_firstFem
+boys.born.after.girls <- birth2[birth1 == 0]
+length(boys.born.after.girls)
+boys.born.after.girls <- birth2[birth1 == 0]
+posterior.predictive.distribution <- rbinom(n = trials, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+posterior.predictive.distribution <- rbinom(n = trials, size = length(boys.born.after.girls), prob = samples)
+posterior.predictive.distribution <- rbinom(n = 1e4, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+boys.born.after.girls <- birth2[birth1 == 0]
+posterior.predictive.distribution <- rbinom(n = 1e4, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+boys.born.after.girls <- birth2[birth1 == 0]
+posterior.predictive.distribution <- rbinom(n = 1e4, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+boys.born.after.girls <- birth2[birth1 == 0]
+posterior.predictive.distribution <- rbinom(n = 1e4, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+boys.born.after.girls <- birth2[birth1 == 0]
+posterior.predictive.distribution <- rbinom(n = 1e4, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+boys.born.after.girls <- birth2[birth1 == 0]
+posterior.predictive.distribution <- rbinom(n = 1e4, size = length(boys.born.after.girls), prob = samples)
+dens(posterior.predictive.distribution, adj = .1)
+abline(v = sum(boys.born.after.girls), col = "red")
+secondBirth_firstFem <- births$birth2[births$birth1==0]
+secondBoy_firstFem <- sum(secondBirth_firstFem)
+# Direct way of doing this:
+secondBoy_firstFem <- sum(births$birth2[births$birth1==0])
+ppd_secondBoy <- rbinom(1e4, size = length(secondBirth_firstFem), prob = samples)
+sort(table(ppd_secondBoy),decreasing=TRUE)/length(ppd_secondBoy)
+dens(ppd_secondBoy, adj = .1)
+abline(v = secondBoy_firstFem, col = "red")
+secondBirth_firstFem <- births$birth2[births$birth1==0]
+secondBoy_firstFem <- sum(secondBirth_firstFem)
+# Direct way of doing this:
+secondBoy_firstFem <- sum(births$birth2[births$birth1==0])
+ppd_secondBoy <- rbinom(1e4, size = length(secondBirth_firstFem), prob = samples)
+sort(table(ppd_secondBoy),decreasing=TRUE)/length(ppd_secondBoy)
+dens(ppd_secondBoy, adj = .1)
+abline(v = secondBoy_firstFem, col = "red")
+secondBirth_firstFem <- births$birth2[births$birth1==0]
+secondBoy_firstFem <- sum(secondBirth_firstFem)
+# Direct way of doing this:
+secondBoy_firstFem <- sum(births$birth2[births$birth1==0])
+ppd_secondBoy <- rbinom(1e4, size = length(secondBirth_firstFem), prob = samples)
+sort(table(ppd_secondBoy),decreasing=TRUE)/length(ppd_secondBoy)
+dens(ppd_secondBoy, adj = .1)
+abline(v = secondBoy_firstFem, col = "red")
+?substr
+"%,%" <- function(x, y) paste0(x, ", ", y)
+"Hello" %,% "World"
+View(`%,%`)
+?filter
+?paste0
+?read.csv
+?basename
+?file.path
+year <- substr(date, 1, 4)
+src <- sprintf("http://cran-logs.rstudio.com/%s/%s.csv.gz",
+year, date)
+date = "2018-03-4"
+year <- substr(date, 1, 4)
+src <- sprintf("http://cran-logs.rstudio.com/%s/%s.csv.gz",
+year, date)
+src
+dest <- file.path("data", basename(src))
+dest
+if(!file.exists(dest)) {
+val <- download.file(src, dest, quiet = TRUE)
+if(!val)
+stop("unable to download file ", src)
+}

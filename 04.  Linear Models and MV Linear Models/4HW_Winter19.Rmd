@@ -1,0 +1,999 @@
+---
+title: "4HW_Winter19"
+output: html_notebook
+---
+
+#Practice
+
+#####4.1.1. Normal by addition
+
+```{r}
+pos <- replicate( 1000 , sum( runif(16,-1,1) ) )
+```
+
+
+#####4.1.2. Normal by multiplication
+```{r}
+growth <- replicate( 10000 , prod( 1 + runif(12,0,0.1) ) )
+dens( growth , norm.comp=TRUE )
+```
+
+```{r}
+big <- replicate( 10000 , prod( 1 + runif(12,0,0.5) ) )
+small <- replicate( 10000 , prod( 1 + runif(12,0,0.01) ) )
+
+dens( big , norm.comp=TRUE )
+dens( small , norm.comp=TRUE )
+
+```
+
+####4.1.3. Normal by log-multiplication.
+
+```{r}
+log.big = replicate(1e5, log(prod(1+runif(12,0,0.5))))
+dens(log.big, norm.comp = T)
+```
+
+
+####4.3. A Gaussian model of height
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+d2 <- d[ d$age >= 18 , ]
+```
+
+
+Prior predictive simulation.
+
+Once you’ve chosen priors for h, mu, and sigma, these imply a joint prior distribution
+of individual heights (Prior Predictive Distribution)
+
+```{r}
+sample_mu <- rnorm( 1e4 , 178 , 20 )
+sample_sigma <- runif( 1e4 , 0 , 50 )
+prior_h <- rnorm( 1e4 , sample_mu , sample_sigma )
+dens( prior_h )
+
+```
+
+
+Grid approximation of the posterior
+```{r}
+
+mu.list <- seq( from=140, to=160 , length.out=200 )
+sigma.list <- seq( from=4 , to=9 , length.out=200 )
+post <- expand.grid( mu=mu.list , sigma=sigma.list )
+post$LL <- sapply( 1:nrow(post) , function(i) sum( dnorm(
+  d2$height ,
+  mean=post$mu[i] ,
+  sd=post$sigma[i] ,
+  log=TRUE ) ) )
+
+post$prod <- post$LL + dnorm( post$mu , 178 , 20 , TRUE ) +
+  dunif( post$sigma , 0 , 50 , TRUE )
+
+post$prob <- exp( post$prod - max(post$prod) )
+```
+
+
+Sampling from the posterior
+```{r}
+
+# Randomly sample row numbers in post in proportion to the values in post$prob
+sample.rows <- sample( 1:nrow(post) , size=1e4 , replace=TRUE , prob=post$prob ) 
+
+# Pull out the parameter values on those randomly sampled rows.
+sample.mu <- post$mu[ sample.rows ]
+sample.sigma <- post$sigma[ sample.rows ]
+
+#You end up with 10,000 samples, with replacement, from the posterior for the height data
+plot( sample.mu , sample.sigma , cex=0.9 , pch=18 , col=col.alpha(rangi2,0.1) )
+
+```
+
+
+```{r}
+hist( sample.mu )
+dens( sample.sigma )
+```
+
+```{r}
+HPDI( sample.mu )
+HPDI( sample.sigma )
+```
+
+
+Quadratic approximation (Guassian approximation)
+```{r}
+library(rethinking)
+data("Howell1")
+d = Howell1
+
+d = d[d$age >= 18, ]
+
+flist  = alist(
+  
+  height ~ dnorm(mu, sigma),
+  mu ~ dnorm(178, 20),
+  sigma ~ dunif(0, 50)
+)
+
+```
+
+##### Fit the model using map (Maximum A Posteriori) function. 
+
+Each line in the definition has a corresponding definition in the form of
+R code. The engine inside quap then uses these definitions to define the posterior probability
+at each combination of parameter values. Then it can climb the posterior distribution and
+find the peak, its MAP.
+
+```{r}
+m4.1 = map(flist, data = d)
+```
+
+Look at the (approximated) posterior distribution
+```{r}
+precis(m4.1)
+```
+These numbers provide Gaussian approximations for each parameter’s marginal distribution.
+This means the plausibility of each value of mu, after averaging over the plausibilities of each
+value of sigma, is given by a Gaussian distribution with mean 154.6 and standard deviation 0.4.
+
+
+The priors we used before are very weak, both because they are nearly flat and because
+there is so much data. So I’ll splice in a more informative prior for mu, so you can see the effect.
+All I’m going to do is change the standard deviation of the prior to 0.1, so it’s a very narrow
+prior.
+
+```{r}
+m4.2 = map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu ~ dnorm(178, 0.1),
+    sigma ~ dunif(0, 50)
+  ), data = d )
+
+precis(m4.2)
+```
+
+#####Sampling from a map fit
+
+```{r}
+vcov(m4.1)
+```
+
+
+
+The above is a variance-covariance matrix. It is the multi-dimensional glue of a quadratic
+approximation, because it tells us how each parameter relates to every other parameter
+in the posterior distribution.
+
+A var-covar matrix can be factored into two elements:
+(1) a vector of variances for the parameters.
+(2) a correlation matrix that tells us how change it any one parameter will lead to correlated changes in the others
+
+```{r}
+# (1)
+diag( vcov( m4.1 ) )
+
+# If you take the square root of this vector, you get the standard deviations that are shown in precis output.
+
+# (2)
+cov2cor( vcov( m4.1 ) )
+```
+
+Okay, so how do we get samples from this multi-dimensional posterior? Now instead
+of sampling single values from a simple Gaussian distribution, we sample vectors of values
+from a multi-dimensional Gaussian distribution.
+
+The work is done by a multi-dimensional version of rnorm, mvrnorm. 
+The function rnorm simulates random Gaussian values, while mvrnorm simulates random
+vectors of multivariate Gaussian values.
+
+```{r}
+library(MASS)
+post <- mvrnorm( n=1e4 , mu=coef(m4.1) , Sigma=vcov(m4.1) )
+```
+
+
+For convenience, can use extract.samples from 'rethiknging' package - which does the same
+```{r}
+library(rethinking)
+post <- extract.samples(m4.1, n = 1e4)
+```
+
+
+You end up with a data frame, post, with 10,000 (1e4) rows and two columns, one column
+for mu and one for sigma. Each value is a sample from the posterior, so the mean and standard
+deviation of each column will be very close to the MAP values from before.
+
+```{r}
+precis(post)
+```
+
+These samples also preserve the covariance between mu and sigma!
+
+
+#####Adding a predictor
+
+Weight as a predictor
+```{r}
+plot(d$height ~ d$weight)
+```
+
+
+Priors in the linear model strategy (alpha = old Mu; Beta = target of learning for the model).
+i.e. the prior predictive simulation.
+
+The goal is to simulate observed heights from the model. 
+
+First, let’s consider a range of weight values to simulate over. The range of observed weights will do fine.
+```{r}
+set.seed(2971)
+
+N = 100
+a = rnorm(N, 178, 20) # alpha
+b = rnorm(N, 0, 10)   # Beta
+
+```
+
+
+Then we need to simulate a bunch of lines, the lines implied by the priors for a and b
+
+```{r}
+plot( NULL , xlim=range(d$weight) , ylim=c(-100,400) ,
+      xlab="weight" , ylab="height" )
+
+abline( h=0 , lty=2 )
+abline( h=272 , lty=1 , lwd=0.5 )
+mtext( "b ~ dnorm(0,10)" )
+xbar <- mean(d$weight)
+
+for ( i in 1:N ) curve( a[i] + b[i]*(x - xbar) ,
+                        from=min(d$weight) , to=max(d$weight) , add=TRUE ,
+                        col=col.alpha("black",0.2) )
+```
+
+We can do better immediately. We know that average height increases with average
+weight, at least up to a point. Let’s try restricting it to positive values. The easiest way to do
+this is to define the prior as Log-Normal instead.
+
+Defining Beta (b) as Log-Normal means to claim that the logarithm of Beta has a normal distribution:
+  Beta ~ logNormal(0,1)
+
+R provides the dlnorm and rlnorm densities for working with log-normal distributions. You
+can simulate this relationship to see what this means for B:
+
+```{r}
+b <- rlnorm(1e4, 0,1)
+dens(b, xlim = c(0,5), adj = 0.1)
+```
+
+If the logarithm of Beta is normal, then Beta itself is strictly positive. (THIS IS WHAT LOG-NORMAL LOOKS LIKE!)
+The reason is that exp(x) is greater than zero for any real number x.
+
+This is the reason that Log-Normal priors are commonplace. 
+They are an easy way to enforce positive relationships.
+
+Simulate and plot the lines implied by alpha and (the new) beta
+```{r}
+set.seed(2971)
+
+a = rnorm(N, 178, 20)
+b = rlnorm(N, 0, 1)
+
+plot( NULL , xlim=range(d$weight) , ylim=c(-100,400) ,
+      xlab="weight" , ylab="height" )
+
+abline( h=0 , lty=2 )
+abline( h=272 , lty=1 , lwd=0.5 )
+mtext( "b ~ dnorm(0,10)" )
+xbar <- mean(d$weight)
+
+for ( i in 1:N ) curve( a[i] + b[i]*(x - xbar) ,
+                        from=min(d$weight) , to=max(d$weight) , add=TRUE ,
+                        col=col.alpha("black",0.2) )
+
+```
+
+
+
+##### Fitting the model (quadratic / gaussian approximation) - with Predictor Variable
+i.e. Posterior Approximation
+
+```{r}
+m4.3 = map(
+  alist(
+    height  ~ dnorm(mu, sigma),
+    mu   <- a + b*(weight - mean(weight)),
+    a       ~ dnorm(178, 20),
+    b       ~ dlnorm(0,1),
+    sigma   ~ dunif(0,50)
+),
+data = d)
+
+precis(m4.3)
+```
+
+
+```{r}
+pairs(m4.3)
+```
+
+
+
+
+
+####4.4.3.2. Plotting posterior inference against the data.
+
+We’re going to start with a simple version of that task, superimposing just the posterior
+mean values over the height and weight data. Then we’ll slowly add more and more information
+to the prediction plots, until we’ve used the entire posterior distribution.
+
+We’ll start with just the raw data and a single line.
+```{r}
+
+# Plot raw data
+plot(height ~ weight, data = d, col = rangi2)
+
+# Compute the posterior mean values for a and b
+post = extract.samples(m4.3)
+aMap = mean(post$a)
+bMap = mean(post$b)
+
+# Superimposed the line implied by the posterior mean values for a and b
+curve(aMap + bMap*(x - mean(d$weight)), add = T)
+
+```
+
+
+####4.4.3.3. Adding uncertainty around the mean.
+
+The posterior mean line (above) is just the posterior mean, the most plausible line in the infinite universe of lines the posterior distribution has considered
+
+This lesson will be easier to appreciate, if we use only some of the data to begin. Then you can see how adding
+in more data changes the scatter of the lines. So we’ll begin with just the first 10 cases in d2.
+The following code extracts the first 10 cases and re-estimates the model
+
+```{r}
+
+cases = 300
+dTemp = d[1:cases, ]
+
+# Fit the model with only 'cases'# of data
+
+mTemp = map(
+  alist(
+    height ~  dnorm(mu, sigma),
+    mu     <- a + b*(weight - mean(weight)),
+    a      ~ dnorm(178, 20),
+    b      ~ dlnorm(0,1),
+    sigma  ~ dunif(0,50) 
+  ),  data = dTemp
+)
+
+
+# Plot 20 lines of the resulting lines
+
+# Extract 20 samples from the posterior
+post = extract.samples(mTemp, n = 20)
+
+# Display raw data
+plot(dTemp$weight, dTemp$height,
+     xlim=range(d$weight) , ylim=range(d$height) ,
+     col=rangi2 , xlab="weight" , ylab="height")
+
+# Display sample size
+mtext(concat("N = ",N))
+     
+# Plot the lines, with transparency
+for (i in 1:length(post$a)){
+  curve(post$a[i] + post$b[i]*(x - mean(dTemp$weight)), col=col.alpha("black",0.3), add = T)
+  
+}
+
+```
+
+
+#####4.4.3.4. Plotting regression intervals and contours.
+
+```{r}
+post = extract.samples(m4.3)
+
+# Vector of predicted means, one for each combination of values in post (i.e. each random sample from the posterior)
+mu50 <- post$a + post$b*(50 - mean(d$weight))
+
+# Plot
+dens( mu50 , col=rangi2 , lwd=2 , xlab="mu|weight=50" )
+
+```
+
+Since the posterior for mu is a distribution, you can find intervals for it, just like for any
+posterior distribution.
+
+```{r}
+HPDI(mu50, 0.89)
+```
+
+What these numbers mean is that the central 89% of the ways for the model to produce the
+data place the average height between about 159 cm and 160 cm (conditional on the model
+and data), assuming the weight is 50 kg.
+
+That’s good so far, but we need to repeat the above calculation for every weight value
+on the horizontal axis, not just when it is 50 kg
+
+```{r}
+post = extract.samples(m4.3)
+
+# Define function mu.link :
+# Input = 'weight' 
+# Output =  vector of predicted means for 'weight', one for each combination of values in post. 
+mu.link     = function(weight) post$a + post$b*(weight - mean(d$weight))
+
+# Define sequence of weights to compute predictions for
+# these values will be on the horizontal axis (weight you are actually interested in)
+weight.seq  = seq(from = 25, to = 75, by = 1)
+
+# Apply the function mu.link to all the weights you are interested in (i.e. to weight.seq)
+mu <- sapply(weight.seq, mu.link)
+
+# Apply function mean and HPDI to mu (on the second dimension - i.e. each column - 51 in total)
+mu.mean <- apply(mu, 2, mean)
+mu.HPDI <- apply(mu, 2, HPDI)
+
+```
+
+Plot the distribution of mu values at each height 
+```{r}
+plot(height ~ weight, d, type = 'n')
+
+# Loop over samples and plot each mu values
+for (i in 1:100){
+  points(weight.seq , mu[i,] , pch=16 , col=col.alpha(rangi2,0.1))
+  
+}
+```
+
+Plot summaries (mu.mean, mu.HPDI over data) 
+
+```{r}
+
+# PLot raw data 
+plot(height ~ weight, d, col=col.alpha(rangi2,0.5))
+
+# Plot mean regression line (i.e. mu.mean)
+lines(weight.seq, mu.mean)
+
+# Plot a shaded region corresponding to HPDI (89%)
+shade(mu.HPDI, weight.seq)
+
+
+
+```
+
+####4.4.3.5. Prediction intervals.
+
+Now let’s walk through generating an 89% prediction interval
+for actual heights, not just the average height, mu. This means we’ll incorporate the
+standard deviation sigma and its uncertainty as well.
+
+What you’ve done so far is just use samples from the posterior to visualize the uncertainty
+in mu(i) - the linear model of the mean: mu(i) <- a + b*(x - mean(x))
+
+But our height model says that: height(i) ~ dnorm(mu(i), sigma).
+This distribution tells us that the model expects observed heights (i.e. height(i)) to be 
+distributed around mu, not right on top of it.
+
+The spread arount mu is governed by sigma -> need to incorporate sigma in the predictions (posterior inference vs data)
+
+Imagine simulating heights. For any unique weight value, you sample
+from a Gaussian distribution with the correct mean mu for that weight, using the correct
+value of sigma sampled from the same posterior distribution. 
+
+If you do this for every sample from the posterior, for every weight value of interest, 
+you end up with a collection of simulated heights that embody the uncertainty in the posterior 
+as well as the uncertainty in the Gaussian distribution of heights.
+
+```{r}
+post = extract.samples(m4.3)
+
+# Define function simHeights :
+# Input = 'weight' 
+# Output =  nrow(post) simulations of height from a Gaussian distribution with the correct mean mu for that weight, 
+#           using the correct value of sigma sampled from the same posterior distribution
+#        = vector of predicted means for 'weight', one for each combination of values in post. (only now we're using sigma             as well)          
+# rnorm - simulates sampling from a Gaussian distribution
+
+simHeight = function(weight) 
+                  rnorm( 
+                    n    = nrow(post) , 
+                    mean = post$a + post$b*( weight - mean(d$weight) ) , 
+                    sd   = post$sigma )
+
+
+# Define sequence of weights to compute predictions for
+# these values will be on the horizontal axis (weight you are actually interested in)
+weight.seq  = seq(from = 25, to = 75, by = 1)
+
+# Apply simHeights for every weight you're interested in.
+# i.e. simulate a height for each set of samples; for each value of weight. 
+heights <- sapply(weight.seq, simHeight)
+
+
+```
+
+heights is similar to mu, but it containts simulated heights - not distributions of plausible average height (mu)
+
+
+Plot the distribution of heights for each weight
+```{r}
+plot(height ~ weight, d, type = 'n')
+
+# Loop over samples and plot each mu values
+for (i in 1:1000){
+  points(weight.seq , heights[i,] , pch=16 , col=col.alpha(rangi2,0.1))
+  
+}
+```
+
+Summarize the simulated heights
+
+```{r}
+
+heights.mean <- apply(heights, 2, mean)
+
+heights.HPDI <- apply(heights, 2, HPDI)
+
+```
+
+Plot it all
+
+```{r}
+# Plot the raw data
+plot(height ~ weight, d, col = col.alpha(rangi2,0.5))
+
+# Plot the MAP line
+lines(weight.seq, mu.mean)
+
+# Plot the uncertainty around the regression (i.e. around the most likely regression line - MAP)
+shade(mu.HPDI, weight.seq)
+
+# Plot the uncertainty around the predicted heights
+shade(heights.HPDI, weight.seq)
+
+```
+
+####4.5.1. Polynomial regression.
+
+Load full !Kung data - includes children
+```{r}
+library(rethinking)
+data(Howell1)
+d = Howell1
+ 
+plot(height ~ weight, d)
+
+```
+
+
+Approximating the posterior (polynomial regression)
+```{r}
+# Standardize regression terms
+d$weight.s  = (d$weight - mean(d$weight))/sd(d$weight)
+d$weight.s2 = d$weight.s^2
+
+m4.4 = map(
+  alist(
+    height ~  dnorm(mu, sigma),
+    mu     <- a + b1*d$weight.s + b2*d$weight.s2,
+    a      ~ dnorm(178,20),
+    b1     ~ dlnorm(0,1),
+    b2     ~ dnorm(0,1),
+    sigma  ~ dunif(0,50)
+  ), data = d )
+
+precis(m4.4)
+
+```
+
+Plot the model fits to understand what they imply
+```{r}
+
+post = extract.samples(m4.4)
+
+weight.seq = seq(from = -2.2, to = 2, length.out = 30) # because it's standardized, you no longer give actual weights, but rather deviations from the mean (between -2.2 and 2 sd, right?)
+
+
+# Define function mu.link :
+# Input = 'weight' 
+# Output =  vector of predicted means for 'weight', one for each combination of values in post. 
+mu.linkPoly     = function(weight.s) post$a + post$b1*weight.s + post$b2*weight.s^2
+
+# Apply the function mu.linkPoly to all the weights you are interested in (i.e. to weight.seq)
+mu <- sapply(weight.seq, mu.linkPoly)
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob = 0.89)
+
+
+
+```
+
+
+```{r}
+
+simHeightPoly = function(weight.s) 
+                  rnorm( 
+                    n    = nrow(post) , 
+                    mean = post$a + post$b1*weight.s + post$b2*weight.s^2, 
+                    sd   = post$sigma )
+
+
+# Apply simHeights for every weight you're interested in.
+# i.e. simulate a height for each set of samples; for each value of weight. 
+heights <- sapply(weight.seq, simHeightPoly)
+```
+
+```{r}
+heights.PI <- apply(heights, 2, PI, prob = 0.89 )
+
+```
+
+```{r}
+plot( height ~ weight.s , d , col=col.alpha(rangi2,0.8) )
+
+lines( weight.seq , mu.mean )
+shade( mu.PI , weight.seq )
+shade( heights.PI , weight.seq )
+```
+
+
+Revert back to natural scale (from standardized)
+```{r}
+# Turn off axis when plotting the raw data
+plot( height ~ weight.s , d , col=col.alpha(rangi2,0.5) , xaxt="n" )
+
+# Construct your own axis
+at <- c(-2,-1,0,1,2)                                 # Define the location of the labels (in standardized units)
+labels <- at*sd(d$weight) + mean(d$weight)           # Takes those units and converts them back to the original scale
+axis( side=1 , at=at , labels=round(labels,1) )      # Draw axis
+
+lines( weight.seq , mu.mean )
+shade( mu.PI , weight.seq )
+shade( heights.PI , weight.seq )
+
+```
+
+####Splines
+
+Come back to this bit later!
+
+
+
+#Homework
+##Easy
+
+4E1. In the model definition below, which line is the likelihood?
+Answer: y[i] ~ dnorm(mu, sigma)
+
+4E2. In the model definition just above, how many parameters are in the posterior distribution?
+Answer: 2; mu & sigma.
+
+4E3. Using the model definition above, write down the appropriate form of Bayes’ theorem that
+includes the proper likelihood and priors.
+Answer: pp. 83 (replace values in that formula)
+
+4E4. In the model definition below, which line is the linear model?
+Answer: mu(i) <- a + b*x(i)
+
+4E5. In the model definition just above, how many parameters are in the posterior distribution?
+Answer: 3; a, b, sigma
+
+
+
+##Medium
+
+####4M1. For the model definition below, simulate observed heights from the prior (not the posterior).
+
+```{r}
+muSamp  = rnorm(1e4, mean = 0, sd = 10)
+sigSamp = runif(1e4, min = 0, max = 10)
+
+simObsPrior = rnorm(1e4, muSamp, sigSamp)
+
+```
+
+
+####4M2. Translate the model just above into a map formula.
+```{r}
+mapFormulaList = alist(
+  y     ~ dnorm(mu, sigma),
+  mu    ~ dnorm(0, 10),
+  sigma ~ dunif(0,10) 
+)
+
+```
+
+
+####4M3. Translate the quap model formula below into a mathematical model definition.
+
+```{r}
+flist <- alist(
+  y ~ dnorm( mu , sigma ),
+  mu <- a + b*x,
+  a ~ dnorm( 0 , 50 ),
+  b ~ dunif( 0 , 10 ),
+  sigma ~ dunif( 0 , 50 )
+)
+```
+
+Answer:
+
+  y     ~ Normal(mu, sigma)
+  mu    = a + b*x
+  a     ~ Normal(0,50)
+  b     ~ Uniform(0,10)
+  sigma ~ Uniform(0, 50)
+
+
+####4M4. A sample of students is measured for height each year for 3 years. After the third year, you want to fit a linear regression predicting height using year as a predictor. Write down the mathematical model definition for this regression, using any variable names and priors you choose. Be prepared to defend your choice of priors.
+
+  height ~ Normal(mu, sigma)
+  mu     = a + b*x
+  a      ~ Normal(155, 20)
+  b      ~ LogNormal(0,1)
+  sigma  ~ Uniform(0, 30)
+  
+
+####4M5. Now suppose I tell you that the average height in the first year was 120 cm and that every
+student got taller each year. Does this information lead you to change your choice of priors? How?
+
+  height ~ Normal(mu, sigma)
+  mu     = a + b*x
+  a      ~ Normal(120, 20)
+  b      ~ LogNormal(0,1)
+  sigma  ~ Uniform(0, 30)
+
+####4M6. Now suppose I tell you that the variance among heights for students of the same age is never more than 64cm. How does this lead you to revise your priors?
+
+  height ~ Normal(mu, sigma)
+  mu     = a + b*x
+  a      ~ Normal(120, 20)
+  b      ~ LogNormal(0,1)
+  sigma  ~ Uniform(0, 32)
+
+##Hard
+
+####4H1. The weights listed below were recorded in the !Kung census, but heights were not recorded for these individuals. Provide predicted heights and 89% intervals (either HPDI or PI) for each of these individuals. That is, fill in the table below, using model-based predictions.
+
+
+Load data and approximate posterior (using map - quadratic approximation)
+```{r}
+library(rethinking)
+data('Howell1')
+d <- Howell1
+d <- d[d$age>=18,]
+
+heightModelAdults <- map(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu     ~ a + b*(weight - mean(d$weight)),
+    a      ~ dnorm(178, 20),
+    b      ~ dlnorm(0,1),
+    sigma  ~ dunif(0,50)
+  ), data = d
+)
+
+precis(heightModelAdults)
+
+```
+
+Extract samples from the posterior.
+Simulate heights.
+```{r}
+# Samples from the posterior
+post = extract.samples(heightModelAdults)
+
+# Weights you are interested in
+weights = c(46.95, 43.72, 64.78, 32.59, 54.63)
+
+# Define meanFunciton
+# input: (weight)
+# output: vector of predicted means (of height) for each 'weight' - one for each combination of values in the posterior
+meanFunction = function (weight) post$a + post$b*(weight - mean(d$weight))
+
+# Apply that function to all the weights you are interested in
+mu = sapply(weights, meanFunction)
+
+mu.mean = apply(mu, 2, mean)
+mu.HPDI = apply(mu, 2, HPDI)
+
+mu.mean
+mu.HPDI
+```
+
+
+
+
+
+
+####4H2. Select out all the rows in the Howell1 data with ages below 18 years of age. If you do it right, you should end up with a new data frame with 192 rows in it.
+
+#####(a) Fit a linear regression to these data, using quap. Present and interpret the estimates. For every 10 units of increase in weight, how much taller does the model predict a child gets?
+
+```{r}
+data("Howell1")
+dc <- Howell1
+dc <- dc[dc$age<18,]
+
+heightModelChildren <- map(
+  alist(
+    height ~  dnorm(mu, sigma),
+    mu     <- a + b*(weight - mean(dc$weight)),
+    a      ~ dnorm(138, 20),
+    b      ~ dlnorm(0,1),
+    sigma  ~ dunif(0,50)
+  ), data = dc
+)
+
+precis(heightModelChildren)
+
+```
+
+Answer: For every 10 units increase in weight, the model predicts a child will be ~27.2cm taller (+-StdDev, !sigma).
+
+
+
+#####(b) Plot the raw data, with height on the vertical axis and weight on the horizontal axis. Superimpose the MAP regression line and 89% HPDI for the mean. Also superimpose the 89% HPDI for predicted heights.
+
+
+```{r}
+post = extract.samples(heightModelChildren)
+weightsCh = seq(from = 2, to = 52, by = 1)
+
+meanFunctionCh = function(weight) post$a + post$b*(weight - mean(dc$weight))
+
+muCh <- sapply(weightsCh, meanFunctionCh)
+
+muCh.mean = apply(muCh, 2, mean)
+muCh.HPDI = apply(muCh, 2, HPDI)
+
+```
+
+
+```{r}
+
+simHeighsFunction = function(weight) rnorm(
+  n = length(post$a),
+  mean = post$a + post$b*(weight - mean(dc$weight)),
+  sd = post$sigma
+)
+
+heightCh = sapply(weightsCh, simHeighsFunction)
+
+heightsCh.mean = apply(heightCh, 2, mean)
+heightsCh.HPDI = apply(heightCh, 2, HPDI)
+
+
+```
+
+
+
+Plot
+```{r}
+plot(height ~ weight, dc, col=col.alpha(rangi2,0.5))
+
+lines(weightsCh, heightsCh.mean)
+
+shade(muCh.HPDI, weightsCh)
+
+shade(heightsCh.HPDI, weightsCh)
+```
+
+
+#####(c) What aspects of the model fit concern you? Describe the kinds of assumptions you would change, if any, to improve the model. You don’t have to write any new code. Just explain what the model appears to be doing a bad job of, and what you hypothesize would be a better model.
+
+
+The model does really poorly at very low, and very high weights.
+The relationship between weight and height cannot be described by a straight line for these data.
+????????
+
+####4H3. Suppose a colleague of yours, who works on allometry, glances at the practice problems just above. Your colleague exclaims, “That’s silly. Everyone knows that it’s only the logarithm of body weight that scales with height!” Let’s take your colleague’s advice and see what happens.
+
+
+#####(a) Model the relationship between height (cm) and the natural logarithm of weight (log-kg). Use the entire Howell1 data frame, all 544 rows, adults and non-adults. Fit this model, using quadratic approximation: 
+            
+            *h[i] ~ Normal(mu[i]; sigma)
+            *mu[i] = a + b*log(w[i])
+            *a ~ Normal(178; 100)
+            *b ~ Normal(0; 100)
+            *sigma ~ Uniform(0; 50)
+            
+```{r}
+
+data("Howell1")
+d <- Howell1
+
+
+heightModelLog = map(
+  alist(
+    height  ~  dnorm(a + b*(log(weight) - log(mean(d$weight))), sigma),
+    # mu      <- a + b*log(weight),
+    a       ~  dnorm(178, 100),
+    b       ~  dnorm(0, 100),
+    sigma   ~  dunif(0,50)
+  ), data = d
+)
+
+precis(heightModelLog)
+
+
+```
+   
+An increase of 1 unit of the Beta term (logWeight) -> An increase of Beta (47.08) in mu
+
+As the standardized log of weight (logWeight - mean(logWeight)) goes up by one unit, height goes up by 47 cm.
+
+#####(b)Use samples from the quadratic approximate posterior of the model in (a) to superimpose on the plot: (1) the predicted mean height as a function of weight, (2) the 97% HPDI for the mean, and (3) the 97% HPDI for predicted heights.
+
+```{r}
+plot( height ~ weight , data=Howell1 ,
+col=col.alpha(rangi2,0.4) )
+```
+
+            
+```{r}
+# Extract samples from (the aproximated) posterior
+postHML = extract.samples(heightModelLog)
+
+# Create sequence of weights you are interested in
+weightsHML = seq(from = round(min(d$weight)) - 2, to = round(max(d$weight)) + 2, by = 1)
+
+# Vector of predicted means (i.e. for height), for every weight in weightsHML
+muHML = sapply(weightsHML, function(weight)
+  postHML$a + postHML$b * (log(weight) - log(mean(d$weight)))
+  )
+
+# Simulated heights, for each pair of values in postHML (includes sigma - uncertainty around predicted heights) 
+heightsHML = sapply(weightsHML, function(weight)
+  rnorm(
+    n = nrow(postHML),
+    mean = postHML$a + postHML$b * (log(weight) - log(mean(d$weight))),
+    sd = postHML$sigma
+  ))
+
+# Compute estimates
+muHML.mean = apply(muHML, 2, mean)
+muHML.HPDI = apply(muHML, 2, HPDI, prob = 0.97)
+
+heightsHML.mean = apply(heightsHML, 2, mean)
+heightsHML.HPDI = apply(heightsHML, 2, HPDI, prob = 0.97)
+
+```
+
+
+Plot
+```{r}
+
+plot( height ~ weight , data=Howell1 ,
+col=col.alpha(rangi2,0.4) )
+
+#MAP line (Predicted mean height, as a function of weight)
+lines(weightsHML, muHML.mean)
+
+# Should be the same as:
+# lines(weightsHML, muHML.mean)
+
+# 97% HPDI for the mean
+shade(muHML.HPDI, weightsHML)
+
+# 97% HPDI for the predicted heights
+shade(heightsHML.HPDI, weightsHML)
+
+
+```
+
+
+            
+

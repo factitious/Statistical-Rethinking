@@ -1,0 +1,1299 @@
+---
+title: "mvLinearModels_Raul"
+output: html_notebook
+---
+
+# Multivariate Linear Models (Chapter 5)
+
+Reasons often given for multivariate models include:
+
+(1) *Statistical “control”* for confounds. A confound is a variable that may be correlated
+with another variable of interest. The spurious waffles and divorce correlation is
+one possible type of confound, where the confound (Southernness) makes a variable
+with no real importance (Waffle House density) appear to be important. But
+confounds can hide real important variables just as easily as they can produce false
+ones. In a particularly important type of confound, known as Simpson’s paradox,
+the entire direction of an apparent association between a predictor and outcome
+can be reversed by considering a confound.
+
+(2) *Multiple causation.* Even when confounds are absent, due for example to tight
+experimental control, a phenomenon may really arise from multiple causes. Measurement
+of each cause is useful, so when we can use the same data to estimate more
+than one type of influence, we should. Furthermore, when causation is multiple,
+one cause can hide another. Multivariate models can help in such settings.
+
+(3) *Interactions.* Even when variables are completely uncorrelated, the importance of
+each may still depend upon the other. For example, plants benefit from both light
+and water. But in the absence of either, the other is no benefit at all. Such interactions
+occur in a very large number of systems. So effective inference about one
+variable will usually depend upon consideration of other variables.
+
+We’ll focus on two valuable things multivariate models can help us with: 
+
+(1) revealing spurious correlations like the Waffle House correlation with divorce
+(2) revealing important correlations that may be masked by unrevealed correlations with other variables.
+
+##5.1 Spurious association
+
+Divorce as a function of median age in each state
+```{r}
+# load data
+library(rethinking)
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize predictor
+d$MedianAgeMarriage.s <- (d$MedianAgeMarriage-mean(d$MedianAgeMarriage))/
+  sd(d$MedianAgeMarriage)
+
+# fit model
+m5.1 <- map(
+  alist(
+    Divorce ~ dnorm( mu , sigma ) ,
+    mu <- a + bA * MedianAgeMarriage.s ,
+    a ~ dnorm( 10 , 10 ) ,
+    bA ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) , data = d )
+```
+
+
+Plots the raw data, draw the posterior mean regression (MAP) line and draw the shaded region (89% PI).
+
+```{r}
+# compute percentile interval of mean
+MAM.seq <- seq( from=-3 , to=3.5 , length.out=30 )
+mu <- link( m5.1 , data=data.frame(MedianAgeMarriage.s=MAM.seq) )
+mu.PI <- apply( mu , 2 , PI )
+
+# plot it all
+plot( Divorce ~ MedianAgeMarriage.s , data=d , col=rangi2 )
+abline( m5.1 )
+shade( mu.PI , MAM.seq )
+```
+
+Divorce as a function of marriage rate in each state
+```{r}
+d$Marriage.s <- (d$Marriage - mean(d$Marriage))/sd(d$Marriage)
+m5.2 <- map(
+  alist(
+    Divorce ~ dnorm( mu , sigma ) ,
+    mu <- a + bR * Marriage.s ,
+    a ~ dnorm( 10 , 10 ) ,
+    bR ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) , data = d )
+
+```
+
+
+
+But merely comparing parameter means between different bivariate regressions is no
+way to decide which predictor is better. Both of these predictors could provide independent
+value, or they could be redundant, or one could eliminate the value of the other. So we’ll
+build a multivariate model with the goal of measuring the partial value of each predictor.
+The question we want answered is:
+
+What is the predictive value of a variable, once I already know all of the other
+predictor variables?
+
+So for example once you fit a multivariate regression to predict divorce using both marriage
+rate and age at marriage, the model answers the questions:
+
+(1) After I already know marriage rate, what additional value is there in also knowing age at marriage?
+
+(2) After I already know age at marriage, what additional value is there in also knowing marriage rate?
+
+
+*5.1.2 Fitting the model*
+Expanding the linear model to include multiple predictors:
+```{r}
+m5.3 <- map( 
+  alist(
+    Divorce ~ dnorm( mu , sigma ) ,
+    mu <- a + bR*Marriage.s + bA*MedianAgeMarriage.s ,
+    a ~ dnorm( 10 , 10 ) ,
+    bR ~ dnorm( 0 , 1 ) ,
+    bA ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data = d )
+precis( m5.3 )
+```
+
+Plot (i.e. caterpillar-ish)
+```{r}
+plot(precis( m5.3 ))
+```
+Interpret: 
+Once we know median age at marriage for a State, there is little or no additional
+predictive power in also knowing the rate of marriage in that State.
+
+Note that this does not mean that there is no value in knowing marriage rate. If you didn’t
+have access to age-at-marriage data, then you’d definitely find value in knowing the marriage
+rate. But how did the model achieve this result? To answer that question, we’ll draw some
+pictures.
+
+*5.1.3. Plotting multivariate posteriors.*
+
+With multivariate regression, you’ll need more plots. There is a huge literature detailing
+a variety of plotting techniques that all attempt to help one understand multiple linear
+regression. None of these techniques is suitable for all jobs, and most do not generalize beyond
+linear regression. So the approach I take here is to instead help you compute whatever
+you need from the model. I offer three types of interpretive plots:
+
+(1) Predictor residual plots. These plots show the outcome against residual predictor values.
+
+(2) Counterfactual plots. These show the implied predictions for imaginary experiments
+in which the different predictor variables can be changed independently of
+one another.
+
+(3) Posterior prediction plots. These show model-based predictions against raw data, or
+otherwise display the error in prediction.
+
+
+*(1) Predictor residual plots.*
+
+A predictor variable residual is the average prediction error when we use 
+all of the other predictor variables to model a predictor of interest.
+
+The benefit of computing these things is that, once plotted against the outcome, we have a bivariate
+regression of sorts that has already “controlled” for all of the other predictor variables. It just
+leaves in the variation that is not expected by the model of the mean, mu, as a function of the
+other predictors.
+
+In our multivariate model of divorce rate, we have two predictors: 
+(1) marriage rate (Marriage.s)
+(2) median age at marriage (MedianAgeMarriage.s). 
+
+To compute predictor residuals for either, we just *use the other predictor to model it.*
+
+For Marriage Rate (i.e. regressing MarriageRate over MedianAgeMarriage), the model is:
+```{r}
+mMarriageRate <- map(
+  alist(
+    Marriage.s ~ dnorm( mu , sigma ) ,
+    mu <- a + b*MedianAgeMarriage.s ,
+    a ~ dnorm( 0 , 10 ) ,
+    b ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data = d )
+```
+
+And then we compute the residuals by subtracting the observed marriage rate in each State
+from the predicted rate, based upon using age at marriage:
+```{r}
+# compute expected value at MAP, for each State
+mu <- coef(mMarriageRate)['a'] + coef(mMarriageRate)['b']*d$MedianAgeMarriage.s
+# compute residual for each State
+m.resid <- d$Marriage.s - mu
+```
+
+
+```{r}
+plot( Marriage.s ~ MedianAgeMarriage.s , d , col=rangi2 )
+plot( Divorce ~ LDSperc.s , d , col=rangi2 )
+abline( mMarriageRate )
+# loop over States
+for ( i in 1:length(m.resid) ) {
+  x <- d$MedianAgeMarriage.s[i] # x location of line segment
+  y <- d$Marriage.s[i] # observed endpoint of line segment
+  # draw the line segment
+  lines( c(x,x) , c(mu[i],y) , lwd=0.5 , col=col.alpha("black",0.7) )
+}
+```
+
+The residuals are variation in marriage rate that is left over, after 
+taking out the purely linear relationship between the two variables
+
+Next (you'll have to work out on your own how to do this, at a later date):
+
+(1) Plot the linear relationship between divorce and marriage
+rates, having statistically “controlled” for median age of marriage.
+
+(2) Repeat procedure with Median age (regress MedianAge over Marriage Rate 
+- median age at marriage, “controlling” for marriage rate)
+
+(3) Plot the residuals for both models against the outcome of interest.
+i.e. Plot model-based predictions against the outcome, after subtracting out the influence of other predictors.
+
+
+*(2) Counterfactual plots.*
+
+These plots display the implied predictions of the model.
+
+The simplest use of a counterfactual plot is to see how the predictions change as you
+change only one predictor at a time (i.e. keeping others constant).
+
+A. Plot showing the impact of changes in Marriage.s on predictions (with MedianAgeMarriage.s held constant):
+```{r}
+# prepare new counterfactual data 
+A.avg <- mean( d$MedianAgeMarriage.s )
+R.seq <- seq( from=-3 , to=3 , length.out=30 )
+pred.data <- data.frame(
+  Marriage.s=R.seq, # Marriage.s changes across the values in R.seq
+  MedianAgeMarriage.s=A.avg # MedianAgeMarriage.s is held constant at its mean
+)
+
+# compute counterfactual mean divorce (mu)
+mu <- link( m5.3 , data=pred.data )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate counterfactual divorce outcomes
+R.sim <- sim( m5.3 , data=pred.data , n=1e4 )
+R.PI <- apply( R.sim , 2 , PI )
+
+# display predictions, hiding raw data with type="n"
+plot( Divorce ~ Marriage.s , data=d, type = 'n')
+mtext( "MedianAgeMarriage.s = 0" )
+lines( R.seq , mu.mean )
+shade( mu.PI , R.seq )
+shade( R.PI , R.seq )
+```
+
+
+B. Plot showing the impact of changes in MedianAgeMarriage on predictions (with Marriage.s held constant):
+```{r}
+R.avg <- mean( d$Marriage.s ) 
+A.seq <- seq( from=-3 , to=3.5 , length.out=30 )
+pred.data2 <- data.frame(
+  Marriage.s=R.avg,
+  MedianAgeMarriage.s=A.seq
+)
+
+mu <- link( m5.3 , data=pred.data2 )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+
+A.sim <- sim( m5.3 , data=pred.data2 , n=1e4 )
+A.PI <- apply( A.sim , 2 , PI )
+
+plot( Divorce ~ MedianAgeMarriage.s , data=d, type = 'n' )
+mtext( "Marriage.s = 0" )
+lines( A.seq , mu.mean )
+shade( mu.PI , A.seq )
+shade( A.PI , A.seq )
+```
+
+
+*(2) Posterior prediction plots.*
+
+These plots check the model fit against the observed data.
+
+Begin by simulating predictions, averaging over the posterior:
+```{r}
+# call link without specifying new data
+# so it uses original data
+mu <- link( m5.3 )
+
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+
+# simulate observations
+# again no new data, so uses original data
+divorce.sim <- sim( m5.3 , n=1e4 )
+divorce.PI <- apply( divorce.sim , 2 , PI )
+
+```
+
+
+For multivariate models, there are many different ways to display these simulations.
+
+A. The simplest is to just plot predictions against observed:
+```{r}
+plot( mu.mean ~ d$Divorce , col=rangi2 , ylim=range(mu.PI) ,
+      xlab="Observed divorce" , ylab="Predicted divorce" )
+
+abline( a=0 , b=1 , lty=2 )
+
+for ( i in 1:nrow(d) )
+  lines( rep(d$Divorce[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+         col=rangi2 )
+```
+
+Some States are very frustrating to the model, lying very far from the diagonal.
+The easiest way to label a few select points is to use identify:
+(This doesn't really work with an .Rmd, unless you change settings to output in console)
+```{r}
+#identify( x=d$Divorce , y=mu.mean , labels=d$Loc , cex=0.8 )
+```
+Just plotting predictions against makes it hard to see the amount of prediction error, in manyc
+cases. For this reason, lots of people also use residual plots that show the mean prediction
+error for each row.
+
+B. Residual plots (for predictions against observed)
+
+```{r}
+# compute residuals
+divorce.resid <- d$Divorce - mu.mean # here mu.mean is "mu <- link( m5.3 )"
+
+# get ordering by divorce rate
+o <- order(divorce.resid)
+
+# make the plot
+dotchart( divorce.resid[o] , labels=d$Loc[o] , xlim=c(-6,5) , cex=0.6 )
+abline( v=0 , col=col.alpha("black",0.2) )
+for ( i in 1:nrow(d) ) {
+  
+  j <- o[i] # which State in order
+  lines( d$Divorce[j]-c(mu.PI[1,j],mu.PI[2,j]) , rep(i,2) )
+  points( d$Divorce[j]-c(divorce.PI[1,j],divorce.PI[2,j]) , rep(i,2),
+          pch=3 , cex=0.6 , col="gray" )
+}
+```
+
+*Overthinking: Simulating spurious association.*
+
+One way that spurious associations between a predictor and outcome can arise is when 
+a truly causal predictor, call it x(real), influences both the outcome, y, 
+and a spurious predictor, x(spur). 
+
+This can be confusing, however, so it may help to simulate this scenario and see both 
+how the spurious data arise and prove to yourself that multiple regression can
+reliably indicate the right predictor, x(real). 
+
+So here’s a very basic simulation:
+```{r}
+N <- 100 # number of cases
+x_real <- rnorm( N ) # x_real as Gaussian with mean 0 and stddev 1
+x_spur <- rnorm( N , x_real ) # x_spur as Gaussian with mean=x_real
+y <- rnorm( N , x_real ) # y as Gaussian with mean=x_real
+d <- data.frame(y,x_real,x_spur) # bind all together in data frame
+```
+
+Now the data frame d has 100 simulated cases. Because x_real influences both y and x_spur, you
+can think of x_spur as another outcome of x_real, but one which we mistake as a potential predictor
+of y. As a result, both x_real and x_spur are correlated with y. You can see this in the scatterplots from
+pairs(d). But when you include both x variables in a linear regression predicting y, the posterior
+mean for the association between y and x_spur will be close to zero, while the comparable mean for xreal
+will be closer to 1. *Do this later*
+
+
+
+##5.2 Masked relationship
+
+The divorce rate example demonstrates that multiple predictor variables are useful for
+knocking out spurious association. A second reason to use more than one predictor variable
+is to measure the direct influences of multiple factors on an outcome, when none of those
+influences is apparent from bivariate relationships. This kind of problem tends to arise when
+there are two predictor variables that are correlated with one another. However, one of these
+is positively correlated with the outcome and the other is negatively correlated with it.
+
+Load the data
+```{r}
+data(milk)
+d <- milk
+str(d)
+```
+
+The question here is to what extent energy content of milk, measured here by kilocalories, is
+related to the percent of the brain mass that is neocortex. 
+
+The first model to consider is the simple bivariate regression between kilocalories and
+neocortex percent:
+```{r}
+m5.5 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bn*neocortex.perc ,
+    a ~ dnorm( 0 , 100 ) ,
+    bn ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 1 )
+  ) ,
+  data=d )
+```
+This returns an error, as d$neocortex.perc contains NAs, and map doesn't know how to deal with these
+
+To make a new data frame with only complete cases in it (i.e. removing the NAs), just use:
+```{r}
+dcc <- d[ complete.cases(d) , ]
+```
+
+Re-fit the model with the new dataframe:
+```{r}
+m5.5 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bn*neocortex.perc ,
+    a ~ dnorm( 0 , 100 ) ,
+    bn ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 1 )
+  ) ,
+  data=dcc )
+
+precis(m5.5, digits = 3) # bn is very small, so we need more digits to see that it’s not exactly zero
+```
+
+
+Plot
+```{r}
+np.seq <- 0:100
+pred.data <- data.frame( neocortex.perc=np.seq )
+
+mu <- link( m5.5 , data=pred.data , n=1e4 )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+
+plot( kcal.per.g ~ neocortex.perc , data=dcc , col=rangi2 )
+lines( np.seq , mu.mean )
+lines( np.seq , mu.PI[1,] , lty=2 )
+lines( np.seq , mu.PI[2,] , lty=2 )
+```
+
+Now let's consider another predictor variable: the adult female body mass, i.e. log(mass).
+Why the logarithm of massinstead of the raw mass in kilograms? 
+It is often true that scaling measurements, e.g. body mass, are related by magnitudes to other variables. 
+Taking the log of a measure translates the measure into magnitudes. So by using the logarithm of body mass here, we’re saying that we suspect that the magnitude of a mother’s body mass is related to milk energy, in a linear
+fashion.
+
+Transform mass into log(mass)
+```{r}
+dcc$log.mass <- log(dcc$mass)
+```
+
+Fit the model
+```{r}
+m5.6 <- map( 
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bm*log.mass ,
+    a ~ dnorm( 0 , 100 ) ,
+    bm ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 1 )
+  ) ,
+  data=dcc )
+
+precis(m5.6)
+```
+
+Plot
+```{r}
+bMass.seq <- -3:5
+pred.data <- data.frame( log.mass=bMass.seq )
+
+mu <- link( m5.6 , data=pred.data , n=1e4 )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+
+plot( kcal.per.g ~ log.mass , data=dcc , col=rangi2 )
+lines( bMass.seq , mu.mean )
+lines( bMass.seq , mu.PI[1,] , lty=2 )
+lines( bMass.seq , mu.PI[2,] , lty=2 )
+```
+
+Now let’s see what happens when we add both predictor variables at the same time to the
+regression:
+```{r}
+m5.7 <- map( 
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bn*neocortex.perc + bm*log.mass ,
+    a ~ dnorm( 0 , 100 ) ,
+    bn ~ dnorm( 0 , 1 ) ,
+    bm ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 1 )
+  ) , data=dcc )
+
+precis(m5.7)
+```
+
+Plot the intervals for the predicted mean kilocalories.
+
+A. The relationship between kilocalories and neocortex percent
+```{r}
+mean.log.mass <- mean( log(dcc$mass) )
+np.seq <- 0:100
+pred.data <- data.frame(
+  neocortex.perc=np.seq,
+  log.mass=mean.log.mass
+)
+mu <- link( m5.7 , data=pred.data , n=1e4 )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+plot( kcal.per.g ~ neocortex.perc , data=dcc , type="n" )
+lines( np.seq , mu.mean )
+lines( np.seq , mu.PI[1,] , lty=2 )
+lines( np.seq , mu.PI[2,] , lty=2 )
+```
+
+B. The relationship between kilocalories and log(mass)
+```{r}
+mean.np <- mean(dcc$neocortex.perc)
+bMass.seq <- -3:5
+pred.data <- data.frame(
+  neocortex.perc=mean.np,
+  log.mass=bMass.seq
+)
+mu <- link( m5.7 , data=pred.data , n=1e4 )
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+
+plot( kcal.per.g ~ log.mass , data=dcc , type="n" )
+lines( bMass.seq , mu.mean )
+lines( bMass.seq , mu.PI[1,] , lty=2 )
+lines( bMass.seq , mu.PI[2,] , lty=2 )
+```
+
+
+
+Why did adding neocortex and body mass to the same model lead to larger estimated effects of both? 
+
+This is a context in which there are two variables correlated with the outcome,
+but one is positively correlated with it and the other is negatively correlated with it.
+In addition, both of the explanatory variables are positively correlated with one another. 
+As a result, they tend to cancel one another out. 
+
+This is another case in which regression automatically finds the most revealing cases and uses 
+them to produce estimates. What the regression model does is ask: 
+
+(1) Do species that have high neocortex percent for their body mass have higher milk energy?
+(2) Do species with high body mass for their neocortex percent have higher milk energy? 
+
+Bigger species, like apes, have milk with less energy. 
+But species with more neocortex tend to have richer milk. 
+The fact that these two variables, body size and neocortex, 
+are correlated across species makes it hard to see these
+relationships, unless we statistically account for both
+
+*Overthinking: Simulating a masking relationship.*
+
+Just as with understanding spurious association , it may help to simulate data in which two 
+meaningful predictors act to mask one another.
+
+Suppose again a single outcome, y, and two predictors, x_pos and x_neg. The predictor x_pos is positively
+associated with y, while x_neg is negatively associated with y. Furthermore, the two predictors are
+positively correlated with one another. Here’s code to produce data meeting these criteria:
+
+```{r}
+N <- 100 # number of cases
+rho <- 0.7 # correlation btw x_pos and x_neg
+x_pos <- rnorm( N ) # x_pos as Gaussian
+x_neg <- rnorm( N , rho*x_pos , # x_neg correlated with x_pos
+                sqrt(1-rho^2) )
+y <- rnorm( N , x_pos - x_neg ) # y equally associated with x_pos, x_neg
+d <- data.frame(y,x_pos,x_neg) # bind all together in data frame
+```
+
+Now if you fit two bivariate regressions, predicting y using either x_pos or x_neg, you get posterior distributions
+that underestimate the true association (which should be about 1 or 􀀀1, respectively). But if
+you then fit a model predicting y using both predictors, you’ll get a posterior distribution that better
+matches the underlying truth. If you move the value of rho closer to zero, this masking phenomenon
+will diminish. If you make rho closer to 1 or 􀀀1, it will magnify. But if rho gets very close to 1 or 􀀀1,
+then the two predictors contain exactly the same information, and there’s no hope for any statistical
+model to tease out the true underlying association used in the simulation.
+
+Why should two predictors be correlated in this way? They might both be influenced by another,
+unmeasured variable. Or one of them, say xneg, is influenced partly by xpos, but also by its own unique
+processes. They might both partly influence one another, in a case of reciprocal causation. In the primate
+milk example, it may be that the positive association between large body size and neocortex
+percent arises from a tradeoff between lifespan and learning. Large animals tend to live a long time.
+And in such animals, an investment in learning may be a better investment, because learning can
+be amortized over a longer lifespan. Both large body size and large neocortex then influence milk
+composition, but in different directions, for different reasons. Luckily, since lots of other factors
+influence both body size and brain structure, the correlation is far from perfect, which allows the statistical
+model to tease them apart. This is a speculative scenario, unlike the certainty of the simulated
+scenario above. But it may help in connecting the simulation to your own data analysis problems,
+whether or not it’s true in the primate milk case.
+
+*Do this*
+
+
+
+##5.3 When adding variables hurts
+
+There are several good, purely statistical reasons to avoid fitting a model that includes too many (/all the available) predictors ,e.g.:
+
+(1) multicollinearity
+(2) posttreatment bias
+(3) overfitting
+
+*Multicollinearity*
+
+Multicollinearity means very strong correlation between two or more predictor variables.
+The consequence of it is that the posterior distribution will say that a very large range
+of parameter values are plausible, from tiny associations to massive ones, even if all of the
+variables are in reality strongly associated with the outcome variable. This frustrating phenomenon
+arises from the details of how statistical control works. So once you understand
+multicollinearity, you will better understand multivariate models in general.
+
+Multicollinear legs (simulation)
+```{r}
+N <- 100 # number of individuals
+height <- rnorm(N,10,2) # sim total height of each
+leg_prop <- runif(N,0.4,0.5) # leg as proportion of height
+leg_left <- leg_prop*height + rnorm( N , 0 , 0.02 ) # sim left leg as proportion + error
+leg_right <- leg_prop*height + rnorm( N , 0 , 0.02 ) # sim right leg as proportion + error
+
+# combine into data frame
+d <- data.frame(height,leg_left,leg_right)
+```
+
+Before fitting the model and looking at the posterior means, however, consider
+what we expect. On average, an individual’s legs are 45% of his or her height (in these
+simulated data). So we should expect the beta coefficient that measures the association of
+a leg with height to end up around the average height (10) divided by 45% of the average
+height (4.5). This is 10=4:5 ~ 2:2. Now let’s see what happens instead:
+```{r}
+m5.8 <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + bl*leg_left + br*leg_right ,
+    a ~ dnorm( 10 , 100 ) ,
+    bl ~ dnorm( 2 , 10 ) ,
+    br ~ dnorm( 2 , 10 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data=d )
+
+precis(m5.8)
+```
+
+The model did fit correctly, and the posterior distribution here is the right answer to the
+question we asked. Recall that a multiple linear regression answers the question: What is
+the value of knowing each predictor, after already knowing all of the other predictors? So in
+this case, the question becomes: What is the value of knowing each leg’s length, after already
+knowing the other leg’s length?
+
+The bivariate posterior distribution for bl and br:
+```{r}
+post <- extract.samples(m5.8)
+plot( bl ~ br , post , col=col.alpha(rangi2,0.1) , pch=16 )
+```
+
+The posterior distribution for these two parameters is very highly correlated, 
+with all of the plausible values of bl and br lying along a narrow ridge. 
+When bl is large, then br must be small. What has happened here is that since 
+both leg variables contain almost exactly the same information, if you insist on
+including both in a model, then there will be a practically infinite number of combinations
+of bl and br that produce the same predictions.
+
+The parameters Beta1 and Beta2 cannot be pulled apart, because they never separately influence the mean mu. 
+Only their sum, Beta1+Beta2, influences mu. So this means the posterior distribution ends up reporting the practically infinite combinations of Beta1 and Beta2 that make their sum close to the actual association of x with y.
+
+And the posterior distribution in this simulated example has done exactly that: It has
+produced a good estimate of the sum of bl and br:
+
+```{r}
+sum_blbr <- post$bl + post$br
+dens( sum_blbr , col=rangi2 , lwd=2 , xlab="sum of bl and br" )
+```
+
+And the resulting density plot is shown on the right-hand side of Figure 5.8. The posterior
+mean is in the right neighborhood, a little over 2, and the standard deviation is much smaller
+than it is for either component of the sum, bl or br. If you fit a regression with only one of
+the leg length variables, you’ll get approximately the same posterior mean:
+```{r}
+m5.9 <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + bl*leg_left,
+    a ~ dnorm( 10 , 100 ) ,
+    bl ~ dnorm( 2 , 10 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data=d )
+
+precis(m5.9)
+```
+
+*When two predictor variables are very strongly correlated, including both in a model may lead to confusion.*
+
+Multicollinear milk (real-data)
+
+Load data (same data as before)
+```{r}
+data(milk)
+d <- milk
+```
+
+Start by modeling kcal.per.g as a function of perc.fat and perc.lactose, but in
+two bivariate regressions:
+```{r}
+# kcal.per.g regressed on perc.fat
+m5.10 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bf*perc.fat ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    bf ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,data=d )
+
+
+# kcal.per.g regressed on perc.lactose
+m5.11 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bl*perc.lactose ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    bl ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data=d )
+precis( m5.10 , digits=3 )
+precis( m5.11 , digits=3 )
+```
+
+Given the strong association of each predictor with the outcome, we might conclude that
+both variables are reliable predictors of total energy in milk, across species. The more fat, the
+more kilocalories in the milk. The more lactose, the fewer kilocalories in milk. But watch
+what happens when we place both predictor variables in the same regression model:
+
+```{r}
+m5.12 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bf*perc.fat + bl*perc.lactose ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    bf ~ dnorm( 0 , 1 ) ,
+    bl ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data=d )
+precis( m5.12 , digits=3 )
+```
+
+What has happened is that the variables perc.fat and perc.lactose contain much of the
+same information. They are substitutes for one another. As a result, when you include both
+in a regression, the posterior distribution ends up describing a long ridge of combinations
+of bf and bl that are equally plausible.
+
+In the case of the fat and lactose, these two variables form essentially a single axis of
+variation. The easiest way to see this is to use a pairs plot:
+```{r}
+pairs( ~ kcal.per.g + perc.fat + perc.lactose , 
+data=d , col=rangi2 )
+```
+
+Notice that percent fat is positively correlated with the outcome, while percent lactose is negatively
+correlated with it. Now look at the right-most scatterplot in the middle row. This plot is the
+scatter of percent fat (vertical) against percent lactose (horizontal). Notice that the points
+line up almost entirely along a straight line. These two variables are negatively correlated,
+and so strongly so that they are nearly redundant. Either helps in predicting kcal.per.g,
+but neither helps much once you already know the other.
+
+Compute correlation between predictors:
+```{r}
+cor( d$perc.fat , d$perc.lactose )
+```
+How strong does a correlation have to get, before you
+should start worrying about multicollinearity? There’s no easy answer to that question. Correlations
+do have to get pretty high before this problem interferes with your analysis. And
+what matters isn’t just the correlation between a pair of variables. Rather, what matters is the
+correlation that remains after accounting for any other predictors.
+
+*Overthinking. Simulating collinearity.*
+
+The code to look at the effect of correlated predictor variables on the narrowness of the posterior
+distribution involves writing a function that generates correlated predictors, fits a model, and returns the standard deviation of the posterior distribution for the slope relating perc.fat to kcal.per.g. Then the code repeatedly calls this function, with different degrees of correlation as input, and collects the results:
+```{r}
+sim.coll <- function( r=0.9 ) {
+  d$x <- rnorm( nrow(d) , mean=r*d$perc.fat ,
+                sd=sqrt( (1-r^2)*var(d$perc.fat) ) )
+  m <- lm( kcal.per.g ~ perc.fat + x , data=d )
+  sqrt( diag( vcov(m) ) )[2] # stddev of parameter
+}
+rep.sim.coll <- function( r=0.9 , n=100 ) {
+  stddev <- replicate( n , sim.coll(r) )
+  mean(stddev)
+}
+r.seq <- seq(from=0,to=0.99,by=0.01)
+stddev <- sapply( r.seq , function(z) rep.sim.coll(r=z,n=100) )
+plot( stddev ~ r.seq , type="l" , col=rangi2, lwd=2 , xlab="correlation" )
+```
+
+So for each correlation value in r.seq, the code generates 100 regressions and returns the average
+standard deviation from them. This code uses implicit flat priors, which are bad priors. So it does
+exaggerate the effect of collinear variables. When you use informative priors, the inflation in standard
+deviation can be much slower.
+
+
+
+What can be done about multicollinearity?
+
+The best thing to do is be aware of it. 
+You can anticipate this problem by checking the predictor variables against one another in a pairs
+plot. Any pair or cluster of variables with very large correlations, over about 0.9, may be problematic,
+once included as main effects in the same model. However, it isn’t always true that
+highly correlated variables are completely redundant—other predictors might be correlated
+with only one of the pair, and so help extract the unique information each predictor provides.
+So you can’t know just from a table of correlations nor from a matrix of scatterplots whether
+multicollinearity will prevent you from including sets of variables in the same model
+
+However, you can usually diagnose the problem by looking for a big inflation of standard deviation,
+when both variables are included in the same model.
+
+Different disciplines have different conventions for dealing with collinear variables. In
+some fields, it is typical to engage in some kind of data reduction procedure, like principle
+components or factor analysis, and then to use the components/factors as predictor
+variables. In other fields, this is considered voodoo, because principle components and factors
+are notoriously hard to interpret, and there are usually hidden decisions that go into
+producing them.
+
+*Post-treatment bias.*
+
+It is routine to worry about mistaken inferences that arise from
+omitting predictor variables. Such mistakes are often called omitted variable bias, and
+the examples from earlier in the chapter illustrate it. It is much less routine to worry about
+mistaken inferences arising from including variables that are consequences of other variables.
+We’ll call this post-treatment bias.
+
+Suppose for example that you are growing some plants in a greenhouse. You want to know the difference in growth under different antifungal soil treatments, because fungus on the plants tends to reduce their growth. 
+Plants are initially seeded and sprout. Their heights are measured. Then different soil treatments are
+applied. Final measures are the height of the plant and the presence of fungus. There are
+four variables of interest here: initial height, final height, treatment, and presence of fungus.
+Final height is the outcome of interest. But which of the other variables should be in the
+model? If your goal is to make a causal inference about the treatment, you shouldn’t include
+the presence of fungus, because it is a post-treatment effect.
+
+```{r}
+# number of plants
+N <- 100
+
+# simulate initial heights
+h0 <- rnorm(N,10,2)
+
+# assign treatments and simulate fungus and growth
+treatment <- rep( 0:1 , each=N/2 )
+fungus <- rbinom( N , size=1 , prob=0.5 - treatment*0.4 )
+h1 <- h0 + rnorm(N, 5 - 3*fungus)
+
+# compose a clean data frame
+d <- data.frame( h0=h0 , h1=h1 , treatment=treatment , fungus=fungus )
+```
+
+
+Fit the model for treatment:
+```{r}
+m5.13 <- map(
+  alist(
+    h1 ~ dnorm(mu,sigma),
+    mu <- a + bh*h0 + bf*fungus + bt*treatment,
+    a ~ dnorm(0,100),
+    c(bh,bf,bt) ~ dnorm(0,10),
+    sigma ~ dunif(0,10)
+  ),
+  data=d )
+
+precis(m5.13)
+```
+
+Inspecting the summary results, the marginal posterior for bt, the effect of treatment, is
+actually negative here. But it mainly had very little effect. The other two predictors, h0 and
+fungus, have important effects. Given that we know the treatment matters, because we built
+the simulation that way, what happened here?
+
+The problem is that fungus is mostly a consequence of treatment. This is to say that
+fungus is a post-treatment variable. So when we control for fungus, the model is implicitly
+answering the question: *Once we already know whether or not a plant developed fungus, does
+soil treatment matter?* The answer is “no,” because soil treatment has its effects on growth
+through reducing fungus. But we actually want to know, based on the design of the experiment,
+is the impact of treatment on growth. To measure this properly, we should omit the
+post-treatment variable fungus:
+```{r}
+m5.14 <- map(
+  alist(
+    h1 ~ dnorm(mu,sigma),
+    mu <- a + bh*h0 + bt*treatment,
+    a ~ dnorm(0,100),
+    c(bh,bt) ~ dnorm(0,10),
+    sigma ~ dunif(0,10)
+  ),
+  data=d )
+precis(m5.14)
+```
+
+
+##5.4 Categorical variables
+
+A common question for statistical methods is to what extent an outcome changes as a
+result of presence or absence of a category. For example, consider the different species in
+the milk energy data again. Some of them are apes, while others are New World monkeys.
+We might want to ask how predictions should vary when the species is an ape instead of a
+monkey. Taxonomic group is a *categorical variable* (aka factor; aka dummy variable), 
+because no species can be half-ape and half-monkey.
+
+*Binary categories*
+
+Load data (Howell1)
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+str(d)
+```
+
+Fit the model (Height ~ Gender)
+```{r}
+m5.15 <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + bm*male ,
+    a ~ dnorm( 178 , 100 ) ,
+    bm ~ dnorm( 0 , 10 ) ,
+    sigma ~ dunif( 0 , 50 )
+  ) ,
+  data=d )
+precis(m5.15)
+```
+
+(a) is now the average height among females.
+(bm) tells us the average difference between males and females, i.e. 7.3 cm
+
+So to compute the average male height, you just add these two estimates: 135 + 7:3 = 142.3
+
+That’s good enough for the posterior mean of average male height, but you’ll also need
+to consider the width of the posterior distribution. And because the parameters a and bm
+are correlated with one another, you can’t just add together the boundaries in the precis
+output and get correct boundaries for their sum. 
+
+But as usual, the most accessible way to derive a percentile interval for average male height 
+is just to sample from the posterior. 
+Then you can just add samples of a and bm together to get the posterior distribution of their sum.
+```{r}
+post <- extract.samples(m5.15)
+mu.male <- post$a + post$bm
+PI(mu.male)
+```
+
+Working with samples automatically handles the subtle problem that a and bm are correlated
+with one another. When working with samples, the procedure is the same no matter what
+the correlation.
+
+*Overthinking: Re-parameterizing the model.*
+
+Instead of using a parameter for the difference between males and females, 
+we can make parameters specific to males and females:
+```{r}
+m5.15b <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- af*(1-male) + am*male ,
+    af ~ dnorm( 178 , 100 ) ,
+    am ~ dnorm( 178 , 100 ) ,
+    sigma ~ dunif( 0 , 50 )
+  ) ,
+  data=d )
+precis(m5.15b)
+```
+
+*Many categories*
+
+To include k categories in a linear model, you require k 􀀀 1 dummy
+variables. Each dummy variable indicates, with the value 1, a unique category. The category
+with no dummy variable assigned to it ends up again as the “intercept” category.
+
+Load data (milk)
+```{r}
+data(milk)
+d <- milk
+unique(d$clade)
+```
+
+To create a dummy, e.g. for the New World Monkey category:
+```{r}
+d$clade.NWM <- ifelse( d$clade=="New World Monkey" , 1 , 0 )
+
+d$clade.OWM <- ifelse( d$clade=="Old World Monkey" , 1 , 0 )
+d$clade.S <- ifelse( d$clade=="Strepsirrhine" , 1 , 0 )
+```
+
+There’s no need to make another for the category Ape, because it will be the default, “intercept”
+category. In fact, if you try to include a dummy variable for apes, you’ll up with a
+non-identifiable model as the intercept and the ape variable would be perfectly correlated (i.e.  multicollinearity) -> both variables contain exactly the same information, so if you insist on
+including both in a model, then there will be a practically infinite number of combinations
+of "Intercept" and "Ape" that produce the same predictions.
+*You don't understand multicollinearity obviously! READ UP*
+
+Fitting the model:
+```{r}
+m5.16 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + b.NWM*clade.NWM + b.OWM*clade.OWM + b.S*clade.S ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    b.NWM ~ dnorm( 0 , 1 ) ,
+    b.OWM ~ dnorm( 0 , 1 ) ,
+    b.S ~ dnorm( 0 , 1 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data=d )
+
+precis(m5.16)
+```
+
+(a) is the average milk energy for apes
+(the rest) are estimates for the other categories (i.e. differences from apes)
+
+To get posterior distributions of the average milk energy in each category, extract samples:
+```{r}
+# sample posterior
+post <- extract.samples(m5.16)
+
+# compute averages for each category
+mu.ape <- post$a
+mu.NWM <- post$a + post$b.NWM
+mu.OWM <- post$a + post$b.OWM
+mu.S <- post$a + post$b.S
+
+# summarize using precis
+precis( data.frame(mu.ape,mu.NWM,mu.OWM,mu.S) )
+```
+These tell us the most plausible (conditional on data and model) average milk energies in each category.
+
+Once you get accustomed to manipulating estimates in this way, you can effectively reparameterize
+your model after you’ve already fit it to the data. For example, above we fit model m5.16 such that each b parameter is a difference from apes. This makes it hard to reason about the differences among other categories. 
+
+So suppose you want to know the estimated difference between the two monkey groups. Then just subtract the estimated means to get a difference:
+```{r}
+diff.NWM.OWM <- mu.NWM - mu.OWM 
+quantile( diff.NWM.OWM , probs=c(0.025,0.5,0.975) )
+```
+
+*Unique intercepts (Compact approach)*
+
+Make an index variable for clade in the primate milk data:
+```{r}
+( d$clade_id <- coerce_index(d$clade) )
+```
+
+This variable just gives the number of each unique clade value. There are four different clades,
+and it doesn’t matter which is “1” or “4,” because they are unordered. That’s why this is an
+“index.” Then you tell map to make a vector of intercepts, one intercept for each unique value
+in clade_id, with:
+
+```{r}
+m5.16_alt <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a[clade_id] ,
+    a[clade_id] ~ dnorm( 0.6 , 10 ) ,
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data=d )
+
+precis( m5.16_alt , depth=2 )
+
+```
+
+Now you get the same averages for each clade that we computed earlier, but this time directly
+from the fit model. Notice that you’ll need to add depth=2 to the precis call in order to
+print out vector parameters like these. Why? Sometimes there are hundreds or thousands
+of vector parameters, so they are suppressed by default. You’ll get a better sense of how we
+might end up with hundreds or thousands of parameters, once you begin tackling multilevel
+models
+
+
+##5.5 Ordinary least squares and *lm*
+
+OLS is a way of estimating the parameters of a linear regression. Instead of searching for 
+the combination of parameter values that maximizes the posterior probability, OLS instead 
+solves for the parameter values that minimize the sum of the squared residuals. 
+
+It turns out that this procedure is often functionally equivalent
+to maximizing the posterior probability or maximizing the likelihood.
+
+Provided you are happy with flat priors, you’ll get the same estimates with lm that you got with map.
+
+*Design formulas*
+
+See section 5.1.1. in the Book
+
+Design formulas are intimately related to a common matrix algebra description of linear
+models.
+
+*Using lm*
+
+Load data
+```{r}
+data(milk)
+d <- milk
+rm(milk)
+```
+
+
+To fit a linear regression using OLS, just provide the design formula and the
+name of the data frame:
+```{r}
+lm5.10 <- lm( kcal.per.g ~ 1 + perc.fat, data=d )
+precis(lm5.10, digits = 3)
+precis(m5.10, digits = 3)
+```
+
+```{r}
+lm5.11 <- lm( kcal.per.g ~ 1 + perc.lactose, data=d )
+precis(lm5.11, digits = 3)
+precis(m5.11, digits = 3)
+
+```
+
+
+```{r}
+
+lm5.12 <- lm( kcal.per.g ~ 1 + perc.fat + perc.lactose, data=d )
+precis(lm5.12, digits = 3)
+precis(m5.12, digits = 3)
+```
+
+##Practice
+
+5M4. In the divorce data, States with high numbers of Mormons (members of The Church of Jesus
+Christ of Latter-day Saints, LDS) have much lower divorce rates than the regression models expected.
+Find a list of LDS population by State and use those numbers as a predictor variable, predicting divorce
+rate using marriage rate, median age at marriage, and percent LDS population (possibly standardized).
+You may want to consider transformations of the raw percent LDS variable.
+
+
+```{r}
+data("WaffleDivorce")
+d <- WaffleDivorce
+
+d$LDSperc <- c(0.77,4.53,6.10,1.04,1.94,2.70,0.44,0.57,0.41,0.75,0.82,5.20,26.23,0.45,0.67,0.90,1.30,0.79,0.64,0.82,0.72,0.40,0.45,0.59,0.73,1.16,4.80,1.30,0.65,0.37,3.33,0.41,0.84,1.49,0.53,1.22,3.72,0.40,0.39,0.81,1.22,0.76,1.25,67.39,0.74,1.13,3.90,0.93,0.46,11.61)
+
+d$LDSperc.100 <- d$LDSperc / 100
+
+d$Marriage.s <- (d$Marriage - mean(d$Marriage))/sd(d$Marriage)
+
+d$MedianAgeMarriage.s <- (d$MedianAgeMarriage-mean(d$MedianAgeMarriage))/sd(d$MedianAgeMarriage)
+
+d$LDSperc.s <- (d$LDSperc.100-mean(d$LDSperc.100))/sd(d$LDSperc.100)
+
+mp5.4 <- map( 
+  alist(
+    Divorce ~ dnorm( mu , sigma ) ,
+    mu <- a + bR*Marriage.s + bA*MedianAgeMarriage.s + bL*LDSperc.s ,
+    a ~ dnorm( 10 , 10 ) ,
+    bR ~ dnorm( 0 , 1 ) ,
+    bA ~ dnorm( 0 , 1 ) ,
+    bL ~ dnorm(0, 1),
+    sigma ~ dunif( 0 , 10 )
+  ) ,
+  data = d )
+precis( m5.3 )
+precis( mp5.4 )
+```
+
+Begin by simulating predictions, averaging over the posterior:
+```{r}
+# call link without specifying new data
+# so it uses original data
+mu <- link(m5.3)
+
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean)
+mu.PI <- apply( mu , 2 , PI)
+
+# simulate observations
+# again no new data, so uses original data
+divorce.sim <- sim( m5.3 , n=1e4 )
+divorce.PI <- apply( divorce.sim , 2 , PI )
+
+```
+
+
+```{r}
+plot( mu.mean ~ d$Divorce , col=rangi2 , ylim=range(mu.PI) ,
+      xlab="Observed divorce" , ylab="Predicted divorce" )
+
+abline( a=0 , b=1 , lty=2 )
+
+for ( i in 1:nrow(d) )
+  lines( rep(d$Divorce[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+         col=rangi2 )
+```
+
+```{r}
+# compute residuals
+divorce.resid <- d$Divorce - mu.mean # here mu.mean is "mu <- link( m5.3 )"
+
+# get ordering by divorce rate
+o <- order(divorce.resid)
+
+# make the plot
+dotchart( divorce.resid[o] , labels=d$Loc[o] , xlim=c(-6,5) , cex=0.6 )
+abline( v=0 , col=col.alpha("black",0.2) )
+for ( i in 1:nrow(d) ) {
+  
+  j <- o[i] # which State in order
+  lines( d$Divorce[j]-c(mu.PI[1,j],mu.PI[2,j]) , rep(i,2) )
+  points( d$Divorce[j]-c(divorce.PI[1,j],divorce.PI[2,j]) , rep(i,2),
+          pch=3 , cex=0.6 , col="gray" )
+}
+```
+
+
+
+Repeat with new model (including LDS rates)
+
+Begin by simulating predictions, averaging over the posterior:
+```{r}
+# call link without specifying new data
+# so it uses original data
+mu <- link(mp5.4)
+
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean)
+mu.PI <- apply( mu , 2 , PI)
+
+# simulate observations
+# again no new data, so uses original data
+divorce.sim <- sim( mp5.4 , n=1e4 )
+divorce.PI <- apply( divorce.sim , 2 , PI )
+
+```
+
+
+
+
+```{r}
+plot( mu.mean ~ d$Divorce , col=rangi2 , ylim=range(mu.PI) ,
+      xlab="Observed divorce" , ylab="Predicted divorce" )
+
+abline( a=0 , b=1 , lty=2 )
+
+for ( i in 1:nrow(d) )
+  lines( rep(d$Divorce[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+         col=rangi2 )
+```
+
+Some States are very frustrating to the model, lying very far from the diagonal.
+
+
+B. Residual plots (for predictions against observed)
+
+```{r}
+# compute residuals
+divorce.resid <- d$Divorce - mu.mean # here mu.mean is "mu <- link( m5.3 )"
+
+# get ordering by divorce rate
+o <- order(divorce.resid)
+
+# make the plot
+dotchart( divorce.resid[o] , labels=d$Loc[o] , xlim=c(-6,5) , cex=0.6 )
+abline( v=0 , col=col.alpha("black",0.2) )
+for ( i in 1:nrow(d) ) {
+  
+  j <- o[i] # which State in order
+  lines( d$Divorce[j]-c(mu.PI[1,j],mu.PI[2,j]) , rep(i,2) )
+  points( d$Divorce[j]-c(divorce.PI[1,j],divorce.PI[2,j]) , rep(i,2),
+          pch=3 , cex=0.6 , col="gray" )
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

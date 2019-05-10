@@ -1,0 +1,1213 @@
+---
+title: "5HW_Winter19"
+output: html_notebook
+---
+# Practice
+####5.1 Spurious association
+
+#####Median Age
+
+Load data and stuff
+```{r}
+# load data and copy 5.1
+library(rethinking)
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize variables (zero centered, standard deviation one)
+d$MedianAgeMarriageS <- scale(d$MedianAgeMarriage)
+d$DivorceS           <- scale(d$Divorce)
+
+
+```
+
+The linear model
+
+* D[i]  ~  N(mu[i],sigma)
+* mu[i] <- a + b* MedianAgeS[i]
+* a     ~  N(0, 0.2)
+* b     ~  N(0, 0.5)
+* sigma ~  Exp(1)
+
+Approximate posterior (Median age at marriage):
+```{r}
+m5.1 = map(
+  alist(
+    DivorceS ~  dnorm(mu, sigma),
+    mu      <- a + bA*MedianAgeMarriageS,
+    a       ~  dnorm(0,0.1),
+    bA      ~  dnorm(0,0.5),
+    sigma   ~  dexp(1)
+  ), data = d
+)
+
+precis(m5.1)
+```
+
+
+Simulate from priors (I have no idea how extract.prior works - Not explained in the book).
+Plot the lines over the range of 2 standard deviations for both the outcome and predictor.
+```{r}
+set.seed(10)
+prior <- extract.prior( m5.1 )
+mu <- link( m5.1 , post=prior , data=list( MedianAgeMarriageS=c(-2,2) ) )
+plot( NULL , xlim=c(-2,2) , ylim=c(-2,2) )
+for ( i in 1:50 ) lines( c(-2,2) , mu[i,] , col=col.alpha("black",0.4) )
+```
+
+Posterior predictions
+```{r}
+# Extract samples
+post = extract.samples(m5.1)
+
+# Sequence of ages you are interested in
+ages = seq(from = -3, to = 3.2, length.out = 30)
+
+# Apply function to every value in ages -> a vector containing predictions for each combination of values in post
+mu = sapply(ages, function(MedianAgeMarriageS)
+  post$a + post$b*MedianAgeMarriageS)
+
+mu.mean = apply(mu, 2, mean)
+mu.HPDI = apply(mu, 2, HPDI)
+
+```
+
+Plot
+```{r}
+plot(DivorceS ~ MedianAgeMarriageS, data = d, col = rangi2,  xaxt="n")
+
+# Converting back to natural scale.
+at <- c(-2,-1,0,1,2,3)
+labels <- at*sd(d$MedianAgeMarriage) + mean(d$MedianAgeMarriage)
+axis( side=1 , at=at , labels=round(labels,1) )
+
+lines(ages, mu.mean, lwd = 2)
+shade(mu.HPDI, ages)
+
+
+```
+
+
+
+
+#####Marriage rate
+
+The linear model (Marriage Rate)
+
+* D[i]  ~  N(mu[i],sigma)
+* mu[i] <- a + b* MarriageS[i]
+* a     ~  N(0, 0.2)
+* b     ~  N(0, 0.5)
+* sigma ~  Exp(1)
+
+Approximate posterior:
+```{r}
+
+d$MarriageS = scale(d$Marriage)
+
+m5.2 = map(
+  alist(
+    DivorceS ~  dnorm(mu, sigma),
+    mu      <- a + bM*MarriageS,
+    a       ~  dnorm(0,0.1),
+    bM       ~  dnorm(0,0.5),
+    sigma   ~  dexp(1)
+  ), data = d
+)
+
+precis(m5.2)
+```
+
+Posterior predictions
+```{r}
+# Extract samples
+post = extract.samples(m5.2)
+
+# Apply function to every value in ages -> a vector containing predictions for each combination of values in post
+muMR = sapply(ages, function(MarriageS)
+  post$a + post$b*MarriageS)
+
+muMR.mean = apply(muMR, 2, mean)
+muMR.HPDI = apply(muMR, 2, HPDI)
+
+```
+
+Plot
+```{r}
+plot(DivorceS ~ MarriageS, data = d, col = rangi2,  xaxt="n")
+
+# Converting back to natural scale.
+at <- c(-2,-1,0,1,2,3)
+labels <- at*sd(d$Marriage) + mean(d$Marriage)
+axis( side=1 , at=at , labels=round(labels,1) )
+
+lines(ages, muMR.mean, lwd = 2)
+shade(muMR.HPDI, ages)
+
+
+```
+
+
+#####DAG
+
+```{r}
+library(dagitty)
+
+dag5.1 <- dagitty("dag {
+                  
+                  A -> D
+                  A -> M
+                  M -> D
+                  }")
+
+coordinates(dag5.1) = list (x=c(A=0, D=1, M=2), y=c(A=0, D=1, M=0))
+
+plot(dag5.1)
+
+```
+
+#####Multiple regression notation
+
+The strategy is straightforward:
+(1) Nominate the predictor variables you want in the linear model of the mean.
+(2) For each predictor, make a parameter that will measure its association with the
+outcome.
+(3) Multiply the parameter by the variable and add that term to the linear model.
+
+e.g.
+
+* Divorce[i] ~  dnorm(mu[i], sigma)
+* mu[i]      <- a + bM*MarriageS + bA*MedianAgeS
+* a          ~  dnorm(0,0.2)
+* bM         ~  dnorm(0,0.5)
+* bA         ~  dnorm(0,0.5)
+* sigma      ~  dexp(1)
+
+mu[i] == the expected outcome for any State with marriage rate MarriageS[i] and median age at marriage MedianAgeS[i] is the sum of three independent terms. 
+
+* The first term is a constant, a. Every State gets this. 
+* The second term is the product of the marriage rate, MarriageS[i], and the coefficient, bM, that measures the     association between marriage rate and divorce rate. 
+* The third term is similar, but for the association with median age at marriage instead.
+
+
+#####Approximating the posterior
+
+```{r}
+m5.3 <- map(
+  alist(
+    DivorceS ~ dnorm( mu , sigma ),
+    mu <- a + bM*MarriageS + bA*MedianAgeMarriageS,
+    a ~ dnorm( 0 , 0.2 ), 
+    bM ~ dnorm( 0 , 0.5 ),
+    bA ~ dnorm( 0 , 0.5 ),
+    sigma ~ dexp( 1 )
+  ) , data = d )
+
+precis( m5.3 )
+```
+
+Visualize the posterior distributions for all three models, focusing just on the
+slope parameters bA and bM:
+
+```{r}
+plot( coeftab(m5.1,m5.2,m5.3), par=c("bA","bM") )
+```
+
+Posterior means shown by the points and the 89% compatibility intervals by the solid horizontal lines. 
+
+Notice how bA doesn’t move, only grows a bit more uncertain, while bM is only associated with divorce when age at marriage is missing from the model. 
+
+You can interpret these distributions as saying:
+*Once we know median age at marriage for a State, there is little or no additional predictive power in also knowing the rate of marriage in that State.
+
+#####Median Age -> Marriage Rate
+
+Linear Model:
+
+* MarriageS ~  dnorm(mu[i], sigma)
+* mu[i]     <- a + bA * MedianAgeMarriageS[i]
+* a         ~  dnorm(0,0.1)
+* b         ~  dnorm(0,0.5)
+* sigma     ~  exp(1)
+
+```{r}
+
+m5.1.2 <- map(
+  alist(
+    MarriageS ~  dnorm(mu, sigma),
+    mu       <-  a + bA * MedianAgeMarriageS,
+    a         ~  dnorm(0,0.1),
+    bA        ~  dnorm(0,0.5),
+    sigma     ~  dexp(1)
+  ), data = d
+)
+
+precis(m5.1.2)
+
+```
+
+
+#####Simulating the divorce example
+
+Every DAG implies a simulation, and such simulations can help us design models to correctly infer relationships among variables. In this case,you just need to simulate each of the three variables:
+
+```{r}
+N   <- 5000 # number of simulated States 
+age <- rnorm( N ) # sim A
+mar <- rnorm( N , age ) # sim A -> M
+div <- rnorm( N , age ) # sim A -> D
+
+dens(div)
+```
+
+
+
+
+#####Plotting multivariate posteriors 
+######(Predictor) Residual Plots
+
+A predictor variable residual is the average prediction error when we use all of the other predictor variables to model a predictor of interest.
+
+The benefit of computing these things is that, once plotted against the outcome, we have a bivariate regression of sorts that has already “controlled” for all of the other predictor variables.
+
+```{r}
+
+# Same as 5.1.2!
+m5.4 <- map(
+  alist(
+    MarriageS ~ dnorm( mu , sigma ) ,
+    mu <- a + bAM * MedianAgeMarriageS ,
+    a ~ dnorm( 0 , 0.2 ) ,
+    bAM ~ dnorm( 0 , 0.5 ) ,
+    sigma ~ dexp( 1 )
+  ) , data = d )
+
+precis(m5.4)
+```
+
+Then we compute the residuals by subtracting the observed marriage rate in each State from the predicted rate, based upon the model above:
+
+```{r}
+
+post    =  extract.samples(m5.4)
+
+marSeq  =  seq(from = -3, to = 3, length.out = 50)
+
+mu      <- sapply(marSeq, function(MedianAgeMarriageS) post$a + post$bAM * MedianAgeMarriageS)
+
+mu_mean = apply(mu, 2, mean)
+
+mu_resid <- d$MarriageS - mu_mean
+
+```
+
+
+
+TODO! Figure out why this plot isn't working properly
+```{r}
+plot( MarriageS ~ MedianAgeMarriageS , d , col=rangi2 )
+lines(marSeq, mu_mean)
+# loop over States
+for ( i in 1:length(mu_resid) ) {
+  x <- d$MedianAgeMarriageS[i] # x location of line segment
+  y <- d$MarriageS[i]          # observed endpoint of line segment
+  
+  # draw the line segment
+  lines( c(x,x) , c(mu_mean[i],y) , lwd=0.5 , col=col.alpha("black",0.7) )
+}
+
+
+```
+
+
+
+######Counterfactual Plots
+A second sort of inferential plot displays the implied predictions of the model
+
+The simplest use of a counterfactual plot is to see how the predictions change as you change only one predictor at a time.
+
+A plot showing the impact of changes in M (marriage rate) on predictions
+```{r}
+# prepare new counterfactual data
+M_seq <- seq(from=-2 , to=3 , length.out=30)
+#pred_data <- data.frame(MarriageS = M_seq , MedianAgeMarriageS = 0)
+
+# compute counterfactual mean divorce (mu)
+# mu <- link(m5.3 , data=pred_data)
+
+post = extract.samples(m5.3)
+
+mu  <- sapply(M_seq, function(MarriageS)post$a + post$bM*MarriageS)
+
+mu_mean <- apply(mu , 2 , mean)
+mu_PI <- apply(mu , 2 , PI)
+
+#simulate counterfactual divorce outcomes
+# D_sim <- sim( m5.3 , data=pred_data , n=1e4 )
+D_sim <- sapply(M_seq, function(MarriageS)
+  rnorm(
+    n = nrow(post),
+    mean = post$a + post$bM*MarriageS,
+    sd = post$sigma
+  ))
+
+D_PI <- apply( D_sim , 2 , PI )
+
+# display predictions, hiding raw data with type="n"
+plot( DivorceS ~ MarriageS , data=d , type="n" )
+mtext( "Median age marriage (std) = 0" )
+lines( M_seq , mu_mean )
+shade( mu_PI , M_seq )
+shade( D_PI , M_seq )
+```
+
+A plot showing the impact of changes in A (MedianAgeMarriage) on predictions
+```{r}
+A_seq = seq(from = -3, to = 3, length.out = 30)
+#pred_data <- data.frame(MarriageS = 0 , MedianAgeMarriageS = A_seq)
+
+#compute counterfactual mean divorce (mu)
+muA <- sapply(A_seq, function(MedianAgeMarriageS) post$a + post$bA*MedianAgeMarriageS)
+
+muA_mean = apply(muA, 2, mean)
+muA_PI = apply(muA, 2, PI)
+
+
+#simulate counterfactual divorce outcomes
+# D_sim <- sim( m5.3 , data=pred_data , n=1e4 )
+DA_sim <- sapply(A_seq, function(MedianAgeMarriageS)
+  rnorm(
+    n = nrow(post),
+    mean = post$a + post$bA*MedianAgeMarriageS,
+    sd = post$sigma
+  ))
+
+DA_PI <- apply( DA_sim , 2 , PI )
+
+# display predictions, hiding raw data with type="n"
+plot( DivorceS ~ MedianAgeMarriageS , data=d , type="n" )
+mtext( "Marriage rate (std) = 0" )
+lines( A_seq , muA_mean )
+shade( muA_PI , A_seq )
+shade( DA_PI , A_seq )
+
+```
+
+Not quite sure what I did works properly?
+I mean it works in this case, as the variables are standardized -> using the mean of a predictor == leaving that predictor out. Otherwise I'm not quite sure it would work?
+
+
+######Posterior Prediction Plots
+
+
+```{r}
+# call link without specifying new data
+# so it uses original data
+mu <- link( m5.3 )
+
+# D_seq <- seq(from = -3, to = 3, length.out = 50)
+# 
+# mu <- sapply(D_seq, function(MarriageS, MedianAgeMarriageS) 
+#   post$a + post$bM*MarriageS+ post$bA*MedianAgeMarriageS, MedianAgeMarriageS = D_seq)
+
+
+# summarize samples across cases
+mu_mean <- apply( mu , 2 , mean )
+mu_PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+D_sim <- sim( m5.3 , n=1e4 )
+D_PI <- apply( D_sim , 2 , PI )
+```
+
+
+Plot predictions against observed
+```{r}
+plot( mu_mean ~ d$DivorceS , col=rangi2 , ylim=range(mu_PI) ,
+      xlab="Observed divorce" , ylab="Predicted divorce" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(d) ) lines( rep(d$DivorceS[i],2) , mu_PI[,i] , col=rangi2 )
+```
+
+
+####5.2 Masked relationship
+
+#####Kcal & Neocortex%
+
+```{r}
+rm(list = ls())
+library(rethinking)
+data(milk)
+```
+
+
+Standardize variables of interest
+```{r}
+milk$K <- scale(milk$kcal.per.g)
+milk$N <- scale(milk$neocortex.perc)
+milk$M <- scale(log(milk$mass))
+```
+
+The first model to consider is the simple bivariate regression between kilocalories and neocortex percent.
+
+Deal with missin values in N and try again
+```{r}
+milk = milk[complete.cases(milk$N, milk$K, milk$M),]
+
+m5.5_draft <- map( 
+  alist(
+    K ~ dnorm( mu , sigma ) ,
+    mu <- a + bN*N ,
+    a ~ dnorm( 0 , 1 ) ,
+    bN ~ dnorm( 0 , 1 ) ,
+    sigma ~ dexp( 1 )
+  ) , data=milk )
+
+precis(m5.5_draft)
+```
+
+Simulate and plot 50 prior regression lines:
+```{r}
+prior <- extract.prior( m5.5_draft )
+xseq <- c(-2,2)
+mu <- link( m5.5_draft , post=prior , data=list(N=xseq) )
+plot( NULL , xlim=xseq , ylim=xseq )
+for ( i in 1:50 ) lines( xseq , mu[i,] , col=col.alpha("black",0.3) )
+```
+
+
+Choose better priors
+
+```{r}
+m5.5 <- map( 
+  alist(
+    K ~ dnorm( mu , sigma ) ,
+    mu <- a + bN*N ,
+    a ~ dnorm( 0 , 0.2 ) ,
+    bN ~ dnorm( 0 , 0.5 ) ,
+    sigma ~ dexp( 1 )
+  ) , data=milk )
+
+precis(m5.5)
+```
+
+Simulate and plot 50 prior regression lines:
+```{r}
+prior <- extract.prior( m5.5)
+xseq <- c(-2,2)
+mu <- link( m5.5_draft , post=prior , data=list(N=xseq) )
+plot( NULL , xlim=xseq , ylim=xseq )
+for ( i in 1:50 ) lines( xseq , mu[i,] , col=col.alpha("black",0.3) )
+```
+
+Plot predicted mean and 89% compatibility interval for the mean (N)
+```{r}
+xSeq = seq(from = min(milk$N) - 0.15, to = max(milk$N) + 0.15, length.out = 30)
+mu   = link(m5.5, data = list(N=xSeq))
+mu_mean = apply(mu, 2, mean)
+mu_PI = apply(mu, 2, PI)
+
+plot(K ~ N, data = milk, col = rangi2, xlab = 'Neocortex % (std)', ylab = 'kcal/g (std)')
+lines(xSeq, mu_mean, lwd = 2)
+shade(mu_PI, xSeq)
+
+
+
+```
+
+
+#####Kcal & FemBodyMass
+
+Now consider another predictor variable, adult female body mass, mass in the data frame. Let’s use the logarithm of mass, log(mass), as a predictor as well. Why the logarithm of mass instead of the raw mass in kilograms? It is often true that scaling measurements like body mass are related by magnitudes to other variables. Taking the log of a measure translates the measure into magnitudes. So by using the logarithm of body mass here, we’re saying that we suspect that the magnitude of a mother’s body mass is related to milk energy, in a linear fashion.
+```{r}
+m5.6 <- map(
+  alist(
+    K ~ dnorm( mu , sigma ) ,
+    mu <- a + bM*M ,
+    a ~ dnorm( 0 , 0.2 ) ,
+    bM ~ dnorm( 0 , 0.5 ) ,
+    sigma ~ dexp( 1 )
+  ) , data=milk )
+precis(m5.6)
+
+```
+
+```{r}
+mSeq = seq(from = min(milk$M)-0.15, to = max(milk$M)+0.15, length.out = 30)
+
+mu = link(m5.6, data = list(M=mSeq))
+
+mu_mean = apply(mu,2,mean)
+mu_PI   = apply(mu,2,PI)
+
+plot(K~M, data = milk, col = rangi2, xlab = 'FemBodyMass_log (std)', ylab = 'Kcal/g (std)')
+lines(mSeq, mu_mean)
+shade(mu_PI, mSeq)
+```
+
+
+
+#####Adding both predictor variables (NeoC + FemBodyMass)
+
+
+```{r}
+m5.7 <- map(
+  alist(
+    K ~ dnorm( mu , sigma ) ,
+    mu <- a + bN*N + bM*M ,
+    a ~ dnorm( 0 , 0.2 ) ,
+    bN ~ dnorm( 0 , 0.5 ) ,
+    bM ~ dnorm( 0 , 0.5 ) ,
+    sigma ~ dexp( 1 )
+  ) , data=milk )
+
+precis(m5.7)
+```
+
+By incorporating both predictor variables in the regression, the posterior association of both with the outcome has increased!!!
+
+```{r}
+plot(coeftab(m5.5, m5.6, m5.7), pars = c('bM', 'bN') )
+```
+
+*Why?*
+
+* This is a context in which there are two variables correlated with the outcome, but one is positively correlated with it and the other is negatively correlated with it.
+
+* In addition, both of the explanatory variables are positively correlated with one another.
+
+```{r}
+pairs(~K +M +N, milk)
+```
+
+
+What the regression model does is ask if species with high neocortex % for their body mass have more calorific milk + do species with high body mass for their neocortex % have higher energy milk.
+
+Counterfactual plots
+```{r}
+
+# Body mass
+mSeq <- seq( from=min(milk$M)-0.15 , to=max(milk$M)+0.15 , length.out=30 )
+mu <- link( m5.7 , data=data.frame( M=xSeq , N=0 ) )
+mu_mean <- apply(mu,2,mean)
+mu_PI <- apply(mu,2,PI)
+plot( NULL , xlim=range(milk$M) , ylim=range(milk$K), xlab = 'FemBodyMass_log (std)', ylab = 'Kcal/g (std)' )
+lines( xSeq , mu_mean , lwd=2 )
+shade( mu_PI , xSeq )
+
+# Neocortex
+nSeq <- seq( from=min(milk$N)-0.15 , to=max(milk$N)+0.15 , length.out=30 )
+mu = link(m5.7, data = data.frame(N=nSeq, M = 0))
+mu_mean <- apply(mu,2,mean)
+mu_PI <- apply(mu,2,PI)
+plot( NULL , xlim=range(milk$M) , ylim=range(milk$K), xlab = 'Neocortex% (std)', ylab = 'Kcal/g (std)' )
+lines( xSeq , mu_mean , lwd=2 )
+shade( mu_PI , xSeq )
+```
+
+
+
+
+
+
+#####Simulating a masking relationship
+
+Simulating data consistent with the first DAG:
+M -> N
+M -> K <- N
+```{r}
+n <- 100
+M <- rnorm( n )
+N <- rnorm( n , M )
+K <- rnorm( n , N - M )
+d_sim <- data.frame(K=K,N=N,M=M)
+
+```
+
+You can quickly see the masking pattern of inferences by replacing dcc with d_sim in models m5.5, m5.6, and m5.7. Look at the precis summaries and you’ll see the same masking pattern where the slopes become more extreme in m5.7.
+
+
+Simulate the other two DAGs:
+
+* M -> K <- N; N -> M
+```{r}
+n <- 100
+N <- rnorm( n )
+M <- rnorm( n , N )
+K <- rnorm( n , N - M )
+d_sim2 <- data.frame(K=K,N=N,M=M)
+```
+
+* M -> K <- N; M <- U -> N
+```{r}
+n <- 100
+U <- rnorm( n )
+N <- rnorm( n , U )
+M <- rnorm( n , U )
+K <- rnorm( n , N - M )
+d_sim3 <- data.frame(K=K,N=N,M=M)
+```
+
+In the primate milk example, it may be that the positive association between large body size and neocortex percent arises from a tradeoff between lifespan and learning. Large animals tend to live a long time. And in such animals, an investment in learning may be a better investment, because learning can be amortized over a longer lifespan. Both large body size and large neocortex then influence milk composition, but in different directions, for different reasons. This story implies that the DAG with an arrow from M to N, the first one, is the right one. But with the evidence at hand, we cannot easily see which is right.
+
+
+####5.3 Categorical variables
+#####Binary categories
+```{r}
+rm(list = ls())
+data("Howell1")
+d <- Howell1
+str(d)
+```
+
+```{r}
+mu_female <- rnorm(1e4,178,20)
+mu_male <- rnorm(1e4,178,20) + rnorm(1e4,0,10)
+precis( data.frame( mu_female , mu_male ) )
+```
+#######Indicator variable
+Indicator variables—sometimes also called “dummy” variables—are devices for encoding unordered categories into quantitative models. There is no sense here in which “male” is one more than “female.” The purpose of the male variable is to indicate when a person in the sample is “male.” So it takes the value 1 whenever the person is male, but it takes the value 0 when the person is female (or any other category). It doesn’t matter which category—“male” or “female”—is indicated by the 1. The model won’t care. But correctly interpreting the model will demand that you remember, so it’s a good idea to name the variable after the category assigned the 1 value.
+
+#######Index variable
+```{r}
+d$sex <- ifelse( d$male==1 , 2 , 1 )
+str( d$sex )
+```
+
+```{r}
+m5.8 <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a[sex] ,
+    a[sex] ~ dnorm( 178 , 20 ) ,
+    sigma ~ dunif( 0 , 50 )
+  ) , data=d )
+precis( m5.8 , depth=2 )
+```
+
+Difference between categories
+```{r}
+post <- extract.samples(m5.8)
+post$diff_fm <- post$a[,1] - post$a[,2]
+precis( post , depth=2 )
+```
+
+
+
+
+#####Many categories
+
+```{r}
+rm(list = ls())
+data(milk) 
+unique(milk$clade)
+```
+
+An index value for each of these four categories
+```{r}
+milk$clade_id <- as.integer( milk$clade )
+```
+
+
+
+```{r}
+milk$K <- scale(milk$kcal.per.g)
+m5.9 <- map(
+  alist(
+    K ~ dnorm( mu , sigma ),
+    mu <- a[clade_id],
+    a[clade_id] ~ dnorm(0 , 0.5),
+    sigma ~ dexp(1)
+  ) , data=milk )
+labels <- paste( "a[" , 1:4 , "]:" , levels(milk$clade) , sep="" )
+plot( precis( m5.9 , depth=2 , pars="a" ) , labels=labels ,
+      xlab="expected kcal (std)" )
+```
+
+
+```{r}
+set.seed(63)
+milk$house <- sample( rep(1:4,each=8) , size=nrow(milk) )
+
+m5.10 <- map(
+  alist(
+    K ~ dnorm( mu , sigma ),
+    mu <- a[clade_id] + h[house],
+    a[clade_id] ~ dnorm( 0 , 0.5 ),
+    h[house] ~ dnorm( 0 , 0.5 ),
+    sigma ~ dexp( 1 )
+  ) , data=milk )
+
+precis(m5.10, depth = 2)
+```
+
+
+
+
+
+# Homework
+
+##Easy
+##Medium
+##Hard
+
+All three exercises below use the same data, data(foxes) (part of rethinking).79 The urban fox (Vulpes vulpes) is a successful exploiter of human habitat. Since urban foxes move in packs and defend territories, data on habitat quality and population density is also included. The data frame has five columns:
+
+  * (1) group: Number of the social group the individual fox belongs to
+  * (2) avgfood: The average amount of food available in the territory
+  * (3) groupsize: The number of foxes in the social group
+  * (4) area: Size of the territory
+  * (5) weight: Body weight of the individual fox
+  
+
+Load data  
+```{r}
+library(rethinking)
+data(foxes)
+
+# Standarsize variables of interest:
+foxes$weightS    = scale(foxes$weight)
+foxes$areaS      = scale(foxes$area)
+foxes$groupsizeS = scale(foxes$groupsize)
+foxes$avgfoodS   = scale(foxes$avgfood)
+
+```
+  
+  
+####5H1. Fit two bivariate Gaussian regressions, using quap: (1) body weight as a linear function of territory size (area), and (2) body weight as a linear function of groupsize. Plot the results of these regressions, displaying the MAP regression line and the 95% interval of the mean. Is either variable important for predicting fox body weight?  
+
+1.) Body weight as a linear function of territory size (area)
+```{r}
+w.A <- map(
+  alist(
+    weightS ~  dnorm(mu,sigma),
+    mu     <- a + bA*areaS,
+    a      ~  dnorm(0, 0.1),
+    bA     ~  dnorm(0, 0.2),
+    sigma  ~  dexp(1)
+  ), data = foxes
+)
+
+precis(w.A)
+```
+  
+```{r}
+
+postW.A = extract.samples(w.A)
+areaSeq = seq(from = min(foxes$areaS), to = max(foxes$areaS), length.out = 30)
+muW.A <- sapply(areaSeq, function(areaS) postW.A$a + postW.A$b * areaS)
+
+muW.A.mean <- apply(muW.A, 2, mean)
+muW.A.PI   <- apply(muW.A, 2, PI, prob = 0.95)
+```
+  
+
+Plot 1.)
+```{r}
+plot(weightS ~ areaS, data = foxes, col = rangi2,  xaxt="n")
+
+# Converting back to natural scale.
+at <- c(-2,-1,0,1,2)
+labels <- at*sd(foxes$areaS) + mean(foxes$area)
+axis( side=1 , at=at , labels=round(labels,1) )
+
+lines(areaSeq, muW.A.mean)
+shade(muW.A.PI, areaSeq)
+```
+
+  
+  
+  
+2.) Body weight as a linear function of groupsize
+```{r}
+w.G = map(
+  alist(
+    weightS ~  dnorm(mu, sigma),
+    mu      <- a + bG*groupsizeS,
+    a       ~ dnorm(0, 0.1),
+    bG      ~ dnorm(0, 0.5),
+    sigma   ~ dexp(1)
+  ), data = foxes
+)
+
+precis(w.G)
+
+```
+  
+```{r}
+grpSeq <- seq(from = min(foxes$groupsizeS), to = max(foxes$groupsizeS), length.out = 30)
+
+postW.G = extract.samples(w.G)
+
+muW.G <- sapply(grpSeq, function(groupsizeS) postW.G$a + postW.G$b * groupsizeS)
+
+muW.G.mean <- apply(muW.G, 2, mean)
+muW.G.PI   <- apply(muW.G, 2, PI, prob = 0.95)
+
+```
+  
+Plot 2.)
+```{r}
+plot(weightS ~ groupsizeS, data = foxes, col = rangi2,  xaxt="n")
+
+# Converting back to natural scale.
+at <- c(-2,-1,0,1,2)
+labels <- at*sd(foxes$groupsize) + mean(foxes$groupsize)
+axis( side=1 , at=at , labels=round(labels,1) )
+
+lines(grpSeq, muW.G.mean)
+shade(muW.G.PI, grpSeq)
+```
+
+####5H2. Now fit a multiple linear regression with weight as the outcome and both area and groupsize as predictor variables. Plot the predictions of the model for each predictor, holding the other predictor constant at its mean. What does this model say about the importance of each variable? Why do you get different results than you got in the exercise just above?
+
+Body weight as a function of both area and group size
+```{r}
+w.A.G = map(
+  alist(
+    weightS ~  dnorm(mu, sigma),
+    mu      <- a + bA * areaS + bG * groupsizeS,
+    a       ~  dnorm(0, 0.1),
+    bA      ~  dnorm(0, 0.5),
+    bG      ~  dnorm(0, 0.5),
+    sigma   ~  dexp(1)
+  ), data = foxes
+)
+
+precis(w.A.G)
+```
+
+```{r}
+library(dagitty)
+
+dagW.A.G <- dagitty("dag {
+                  
+                  Area -> Weight
+                  Area -> GroupSize
+                  GroupSize -> Weight
+                  }")
+
+coordinates(dagW.A.G) = list (x=c(Area=0, Weight=1, GroupSize=2), y=c(Area=0, Weight=1, GroupSize=0))
+
+plot(dagW.A.G)
+
+```
+
+```{r}
+x = coeftab(w.A , w.G , w.A.G)
+coeftab_plot(x, pars = c("bA","bG"))
+```
+
+
+Posterior predictions  
+```{r}
+# call link without specifying new data
+# so it uses original data
+mu <- link( w.A.G)
+
+# summarize samples across cases
+mu_mean <- apply( mu , 2 , mean )
+mu_PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+D_sim <- sim( w.A.G , n=1e4 )
+D_PI <- apply( D_sim , 2 , PI )
+```  
+
+Plot predictions against observed
+```{r}
+plot( mu_mean ~ foxes$weightS , col=rangi2 , ylim=range(mu_PI) ,
+      xlab="Observed weight" , ylab="Predicted weight" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(foxes) ) lines( rep(foxes$weightS[i],2) , mu_PI[,i] , col=rangi2 )
+```
+
+Counterfactuals
+1.) Impact of Area on Weight (keeping GroupSize constant)
+```{r}
+#Prepare new counterfactual data
+areaSeq   = seq(from = -3, to = 3, length.out = 30)
+pred_data = data.frame(areaS = areaSeq, groupsizeS = 0)
+
+#Compute counterfactual mean weight (mu)
+muWGA      = link(w.A.G, data = pred_data)
+muWGA.mean = apply(muWGA, 2, mean)
+muWGA.PI   = apply(muWGA, 2, PI)
+
+#Simulate counterfactual weights
+wSim = sim(w.A.G, data = pred_data, n = 1e4)
+wPI  = apply(wSim, 2, PI)
+
+# display predictions, hiding raw data with type="n"
+plot( weightS ~ areaS , data=foxes , type="n" )
+mtext( "Group Size (std) = 0" )
+lines( areaSeq , muWGA.mean )
+shade( muWGA.PI , areaSeq )
+shade( wPI , areaSeq )
+```
+
+
+2.) Impact of GroupSize on Weight (keeping Area constant)
+```{r}
+#Prepare new counterfactual data 
+grpSeq    = seq(from = -3, to = 3, length.out = 30)
+pred_data = data.frame(groupsizeS = grpSeq, areaS = 0)
+
+#Compute counterfactual mean (mu)
+muWGA = link(w.A.G, data = pred_data)
+muWGA.mean = apply(muWGA, 2, mean)
+muWGA.PI   = apply(muWGA, 2, PI)
+
+#Simulate counterfactual weights
+wSim = sim(w.A.G, data = pred_data, n = 1e4)
+wPI  = apply(wSim, 2, PI)
+
+#Display predictions
+plot( weightS ~ groupsizeS , data=foxes , type="n" )
+mtext( "Area (std) = 0" )
+lines( grpSeq , muWGA.mean )
+shade( muWGA.PI , grpSeq )
+shade( wPI , grpSeq )
+
+```
+
+
+####5H3. Finally, consider the avgfood variable. Fit two more multiple regressions: (1) body weight as an additive function of avgfood and groupsize, and (2) body weight as an additive function of all three variables, avgfood and groupsize and area. Compare the results of these models to the previous models you’ve fit, in the first two exercises. 
+
+1.) Body weight as an additive function of avgfood and groupsize
+```{r}
+#Standardize avgfood
+foxes$avgfoodS = scale(foxes$avgfood)
+
+#Fit model | Approximate posterior
+w.G.F = map(
+  alist(
+    weightS ~  dnorm(mu,sigma),
+    mu      <- a + bF*avgfoodS + bG * groupsizeS,
+    a       ~  dnorm(0, 0.1),
+    bF      ~  dnorm(0, 0.5),
+    bG      ~  dnorm(0, 0.5),
+    sigma   ~  dexp(1)
+  ), data = foxes)
+
+precis(w.G.F)
+
+```
+
+
+2.) Body weight as an additive function of all three variables
+```{r}
+
+#Fit model | Approximate posterior
+w.A.G.F = map(
+  alist(
+    weightS ~  dnorm(mu,sigma),
+    mu      <- a + bF*avgfoodS + bG * groupsizeS + bA * areaS,
+    a       ~  dnorm(0, 0.1),
+    bF      ~  dnorm(0, 0.5),
+    bG      ~  dnorm(0, 0.5),
+    bA      ~  dnorm(0, 0.5),
+    sigma   ~  dexp(1)
+  ), data = foxes)
+
+precis(w.A.G.F)
+
+```
+
+**(a)* Is avgfood or area a better predictor of body weight? If you had to choose one or the other to include in a model, which would it be? Support your assessment with any tables or plots you choose. 
+
+```{r}
+xAll = coeftab(w.A , w.G , w.A.G, w.G.F, w.A.G.F)
+coeftab_plot(xAll, pars = c("bA","bG","bF"))
+```
+
+Counterfactuals
+1.) Impact of areaS on Weight (keeping groupsize and avgfood constant)
+```{r}
+#Prepare new counterfactual data
+areaSeq   = seq(from = -3, to = 3, length.out = 30)
+pred_data = data.frame(areaS = areaSeq, groupsizeS = 0, avgfoodS = 0)
+
+#Compute counterfactual mean weight (mu)
+muWGAF      = link(w.A.G.F, data = pred_data)
+muWGAF.mean = apply(muWGAF, 2, mean)
+muWGAF.PI   = apply(muWGAF, 2, PI)
+
+#Simulate counterfactual weights
+Sim.WGAF = sim(w.A.G.F, data = pred_data, n = 1e4)
+PI.WGAF  = apply(Sim.WGAF, 2, PI)
+
+# display predictions, hiding raw data with type="n"
+plot(weightS ~ areaS , data=foxes , type="n", xaxt="n", yaxt = "n")
+mtext("Group Size (std) & Average Food (std) = 0" )
+
+# Converting back to natural scale.
+atX <- c(-3,-2,-1,0,1,2,3)
+labelsX <- atX*sd(foxes$area) + mean(foxes$area)
+axis( side=1 , at=atX , labels=round(labelsX,1) )
+
+# Converting back to natural scale. (Y-Axis)
+atY <- c(-2,-1,0,1,2)
+labelsY <- atY*sd(foxes$weight) + mean(foxes$weight)
+axis( side=2 , at=atY , labels=round(labelsY,1) )
+
+
+lines(areaSeq , muWGAF.mean)
+shade(muWGAF.PI , areaSeq)
+shade(PI.WGAF , areaSeq)
+```
+
+2.) Impact of avgfood on weight (keeping area and groupsize constant)
+```{r}
+#Prepare new counterfactual data
+foodSeq   = seq(from = -3, to = 3, length.out = 30)
+pred_data = data.frame(avgfoodS = foodSeq, areaS = 0, groupsizeS = 0)
+
+#Compute counterfactual mean weight
+muWGAF      = link(w.A.G.F, data = pred_data)
+muWGAF.mean = apply(muWGAF, 2, mean)
+muWGAF.PI   = apply(muWGAF, 2, PI)
+
+#Simulate counterfactual weights
+Sim.WGAF = sim(w.A.G.F, data = pred_data, n = 1e4)
+PI.WGAF  = apply(Sim.WGAF, 2, PI)
+
+#Display Predictions
+plot(weightS ~ avgfoodS, data = foxes, type = "n", xaxt = "n", yaxt = "n")
+mtext( "Area (std) & Group Size (std) = 0" )
+
+# Converting back to natural scale. (X-Axis)
+atX <- c(-3,-2,-1,0,1,2,3)
+labelsX <- atX*sd(foxes$avgfood) + mean(foxes$avgfood)
+axis( side=1 , at=atX , labels=round(labelsX,1) )
+
+# Converting back to natural scale. (Y-Axis)
+atY <- c(-2,-1,0,1,2)
+labelsY <- atY*sd(foxes$weight) + mean(foxes$weight)
+axis( side=2 , at=atY , labels=round(labelsY,1) )
+
+
+lines( foodSeq , muWGAF.mean )
+shade( muWGAF.PI , foodSeq )
+shade( PI.WGAF , foodSeq )
+
+```
+
+3.) Impact of GroupSize on Weight (keeping Area and avgfood constant)
+```{r}
+#Prepare new counterfactual data 
+grpSeq    = seq(from = -3, to = 3, length.out = 30)
+pred_data = data.frame(groupsizeS = grpSeq, areaS = 0, avgfoodS = 0)
+
+#Compute counterfactual mean weight
+muWGAF      = link(w.A.G.F, data = pred_data)
+muWGAF.mean = apply(muWGAF, 2, mean)
+muWGAF.PI   = apply(muWGAF, 2, PI)
+
+#Simulate counterfactual weights
+Sim.WGAF = sim(w.A.G.F, data = pred_data, n = 1e4)
+PI.WGAF  = apply(Sim.WGAF, 2, PI)
+
+#Display Predictions
+plot(weightS ~ groupsizeS, data = foxes, type = "n", xaxt = "n", yaxt = "n")
+mtext( "Area (std) & Average Food (std) = 0" )
+
+# Converting back to natural scale. (X-Axis)
+atX <- c(-3,-2,-1,0,1,2,3)
+labelsX <- atX*sd(foxes$groupsize) + mean(foxes$groupsize)
+axis( side=1 , at=atX , labels=round(labelsX,1) )
+
+# Converting back to natural scale. (Y-Axis)
+atY <- c(-2,-1,0,1,2)
+labelsY <- atY*sd(foxes$weight) + mean(foxes$weight)
+axis( side=2 , at=atY , labels=round(labelsY,1) )
+
+
+lines( grpSeq , muWGAF.mean )
+shade( muWGAF.PI , grpSeq )
+shade( PI.WGAF , grpSeq )
+
+```
+
+
+Posterior predictions (Area and Goupsize Model)
+```{r}
+
+ctY = c(-1.5, 1.5)
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( w.A.G)
+
+# summarize samples across cases
+mu_mean <- apply( mu , 2 , mean )
+mu_PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+D_sim <- sim( w.A.G , n=1e4 )
+D_PI <- apply( D_sim , 2 , PI )
+
+plot( mu_mean ~ foxes$weightS , col=rangi2 , ylim=ctY ,
+      xlab="Observed weight" , ylab="Predicted weight" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(foxes) ) lines( rep(foxes$weightS[i],2) , mu_PI[,i] , col=rangi2 )
+```  
+
+Posterior predictions (Groupsize and AvgFood Model)
+```{r}
+# call link without specifying new data
+# so it uses original data
+mu <- link( w.G.F)
+
+# summarize samples across cases
+mu_mean <- apply( mu , 2 , mean )
+mu_PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+D_sim <- sim( w.G.F , n=1e4 )
+D_PI <- apply( D_sim , 2 , PI )
+
+plot( mu_mean ~ foxes$weightS , col=rangi2 , ylim=ctY ,
+      xlab="Observed weight" , ylab="Predicted weight" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(foxes) ) lines( rep(foxes$weightS[i],2) , mu_PI[,i] , col=rangi2 )
+```  
+
+*Answer:* It doesn't seem to make much of a difference whether adding avgfood or area to the model - they appear to explain the same variance observed in the data. This could suggest a high correlation between the two:
+```{r}
+pairs(~weightS + areaS + avgfoodS, data = foxes)
+```
+
+```{r}
+vcov(w.A.G.F)
+```
+
+*(b)* When both avgfood or area are in the same model, their effects are reduced (closer to zero) and their standard errors are larger than when they are included in separate models. Can you explain this result?
+
+Multicollinearity: very strong correlation between avgfood and area; i.e. they both contain the same information
+
+The question multivariate regression is asking is: "What is the value of knowing each predictor, after already knowing all of the other predictors?". 
+What has happened here is that since both area and avgfood variables contain almost the same information, if you insist on including both in a model, then there will be a practically infinite number of combinationsof areaS and avgfoodS that produce the same predictions.
+
+e.g. 
+  * y[i]  ~ dnorm(mu,sigma)
+  * mu[i] ~ a + b1*x[i] + b2*x[i]
+  
+The parameters b1 and b2 cannot be pulled apart,because they never separately influence the mean x[i].
+  
+So the model is actually:
+  * y[i]  ~ dnorm(mu,sigma)
+  * mu[i] ~ a + (b1+b2)*x[i]
+  
+Only the sum of parameters, b1+b2, influences mu. So this means the posterior distribution ends up reporting the practically infinite combinations of b1 and b2 that make their sum close to the actual association of x with y.
+
+
+```{r}
+post = extract.samples(w.A.G.F)
+
+plot(bA ~ bF, post , col=col.alpha(rangi2,0.1) , pch=16)
+```
+
+
+
+

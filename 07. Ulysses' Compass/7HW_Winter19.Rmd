@@ -1,0 +1,195 @@
+---
+title: "7HW_Winter19"
+output: html_notebook
+---
+
+##Practice
+
+```{r}
+rm(list = ls())
+library(rethinking)
+```
+
+
+####An exapmle of *overfitting*
+
+```{r}
+#Create data frame of brain and body sizes
+sppnames <- c( "afarensis","africanus","habilis","boisei", "rudolfensis","ergaster","sapiens")
+brainvolcc <- c( 438 , 452 , 612, 521, 752, 871, 1350 )
+masskg <- c( 37.0 , 35.5 , 34.5 , 41.5 , 55.5 , 61.0 , 53.5 )
+d <- data.frame( species=sppnames , brain=brainvolcc , mass=masskg )
+
+#Standardize body mass + rescale brain volume (outcome)
+d$mass_std <- (d$mass - mean(d$mass))/sd(d$mass)
+d$brain_std <- d$brain / max(d$brain)
+```
+
+Fitting a series of increasingly more complex models to see which function fits data best:
+
+#####1). Linear model
+```{r}
+m7.1 <- quap(
+  alist(
+    brain_std ~ dnorm( mu , exp(log_sigma) ),
+    mu <- a + b*mass_std,
+    a ~ dnorm( 0.5 , 1 ),
+    b ~ dnorm( 0 , 10 ),
+    log_sigma ~ dnorm( 0 , 1 )
+  ), data=d )
+
+precis(m7.1)
+```
+
+Prior predictive simulation (Really bad, but going with it for the sake of the example)
+```{r}
+prior = extract.prior(m7.1)
+mu    = link(m7.1, post = prior, data = list(mass_std = c(-2,2)))
+plot(NULL, xlim=c(-2,2), ylim=c(-2,2))
+for (i in 1:50) lines(c(-3,3),mu[i,], col=col.alpha("black",0.4))
+```
+
+Quick look at *R2*
+
+* Compute the posterior predictive distribution for each observation (e.g. using sim)
+* Subtract each observation from its prediction to get a residual
+* Compute thhe variance of both these residuals and the outcome variable
+
+```{r}
+set.seed(12)
+s <- sim( m7.1 )
+r <- apply(s,2,mean) - d$brain_std
+resid_var <- var2(r)
+outcome_var <- var2( d$brain_std )
+1 - resid_var/outcome_var
+
+#Function to repeat the above for the other models
+R2_is_bad <- function( quap_fit ) {
+  s <- sim( quap_fit , refresh=0 )
+  r <- apply(s,2,mean) - d$brain_std
+  1 - var2(r)/var2(d$brain_std)
+}
+
+```
+
+#####2). Polynomial model (2nd)
+```{r}
+m7.2 <- quap(
+  alist(
+    brain_std ~ dnorm( mu , exp(log_sigma) ),
+    mu <- a + b[1]*mass_std + b[2]*mass_std^2,
+    a ~ dnorm( 0.5 , 1 ),
+    b ~ dnorm( 0 , 10 ),
+    log_sigma ~ dnorm( 0 , 1 )
+  ), data=d , start=list(b=rep(0,2)) )
+
+```
+This model family adds one more parameter, b2, but uses all of the same data as m7.1. 
+
+To do this model in quap, we can define b as a vector. The only trick required is to tell quap how long that vector is by using a start list
+
+
+#####3). Polynomial model (3rd)
+
+```{r}
+m7.3 <- quap(
+  alist(
+    brain_std ~ dnorm( mu , exp(log_sigma) ),
+    mu <- a + b[1]*mass_std + b[2]*mass_std^2 +
+      b[3]*mass_std^3,
+    a ~ dnorm( 0.5 , 1 ),
+    b ~ dnorm( 0 , 10 ),
+    log_sigma ~ dnorm( 0 , 1 )
+  ), data=d , start=list(b=rep(0,3)) )
+```
+
+
+#####4). Polynomial model (4th)
+```{r}
+m7.4 <- quap(
+  alist(
+    brain_std ~ dnorm( mu , exp(log_sigma) ),
+    mu <- a + b[1]*mass_std + b[2]*mass_std^2 +
+      b[3]*mass_std^3 + b[4]*mass_std^4,
+    a ~ dnorm( 0.5 , 1 ),
+    b ~ dnorm( 0 , 10 ),
+    log_sigma ~ dnorm( 0 , 1 )
+  ), data=d , start=list(b=rep(0,4)) )
+```
+
+
+#####5). Polynomial model (5th)
+```{r}
+m7.5 <- quap(
+  alist(
+    brain_std ~ dnorm( mu , exp(log_sigma) ),
+    mu <- a + b[1]*mass_std + b[2]*mass_std^2 +
+      b[3]*mass_std^3 + b[4]*mass_std^4 +
+      b[5]*mass_std^5,
+    a ~ dnorm( 0.5 , 1 ),
+    b ~ dnorm( 0 , 10 ),
+    log_sigma ~ dnorm( 0 , 1 )
+  ), data=d , start=list(b=rep(0,5)) )
+```
+
+
+#####6). Polynomial model (6th)
+
+That last model, m7.6, has one trick in it. The standard deviation is replaced with a constant value 0.001. The model will not work otherwise, for a very important reason that will become clear as we plot these monsters.
+```{r}
+m7.6 <- quap(
+  alist(
+    brain_std ~ dnorm( mu , 0.001 ),
+    mu <- a + b[1]*mass_std + b[2]*mass_std^2 +
+      b[3]*mass_std^3 + b[4]*mass_std^4 +
+      b[5]*mass_std^5 + b[6]*mass_std^6,
+    a ~ dnorm( 0.5 , 1 ),
+    b ~ dnorm( 0 , 10 )
+  ), data=d , start=list(b=rep(0,6)) )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TODO: Figure out how to plot these efficiently!
+Rest is in the book. (Quite compressed, no reason to provide a summary here).
+
+
+
+
+
+####An example of *underfitting*
+
+The overfit polynomial models manage to fit the data extremely well, but they suffer for this within-sample accuracy by making nonsensical out-ofsample predictions. In contrast, underfitting produces models that are inaccurate both within and out of sample. They have learned too little, failing to recover regular features of the sample.
+
+```{r}
+m7.7 <- quap( 
+  alist(
+    brain_std ~ dnorm( mu , exp(log_sigma) ),
+    mu <- a,
+    a ~ dnorm( 0.5 , 1 ),
+    log_sigma ~ dnorm( 0 , 1 )
+  ), data=d )
+
+precis(m7.7)
+
+```
+
+*+ DROPPING ROWS*
+```{r}
+#d_minus_i <- d[ -i , ]
+#e.g. to drop row 3 -> i = 3
+```
+
